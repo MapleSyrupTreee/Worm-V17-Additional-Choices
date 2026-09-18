@@ -395,7 +395,10 @@
     btn.type = 'button';
     btn.textContent = '✎ Edit CYOA';
     btn.title = 'Toggle the interactive editor (Ctrl+E)';
-    btn.addEventListener('click', () => editorSetMode(!EDITOR_UI.active));
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      editorSetMode(!EDITOR_UI.active);
+    });
     document.body.appendChild(btn);
     EDITOR_UI.toggleBtn = btn;
 
@@ -563,6 +566,7 @@
       <button type="button" data-act="duplicate" title="Duplicate this choice">⧉</button>
       <button type="button" data-act="delete" title="Delete this choice (Del)">🗑</button>`;
     toolbar.addEventListener('click', (e) => {
+      e.stopPropagation();
       const act = e.target && e.target.dataset ? e.target.dataset.act : null;
       if (!act || !EDITOR_UI.selection) return;
       if (act === 'edit') editorOpenEditModal(EDITOR_UI.selection.objId);

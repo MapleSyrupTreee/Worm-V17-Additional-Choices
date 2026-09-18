@@ -417,6 +417,8 @@ body.worm-edit-mode .project-obj .obj-controls {
   border-radius: 10px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(12px);
+  pointer-events: auto;
+  cursor: default;
 }
 
 .worm-sel-toolbar button {
