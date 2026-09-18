@@ -572,7 +572,7 @@ body.worm-edit-mode .row-header {
 
 .worm-score-edit {
   display: grid;
-  grid-template-columns: minmax(120px, 1.2fr) auto 76px auto auto;
+  grid-template-columns: minmax(120px, 1.2fr) auto 76px auto;
   gap: 6px;
   align-items: center;
   margin-bottom: 6px;
@@ -626,6 +626,82 @@ body.worm-edit-mode .row-header {
 }
 
 .worm-footer-spacer { flex: 1; }
+
+/* Empty-state hints + Section Activation editor */
+.worm-empty-hint {
+  border: 1px dashed var(--wv-stroke-strong);
+  border-radius: 7px;
+  padding: 8px 10px;
+  color: var(--wv-text-3);
+  font-size: 11.5px;
+  text-align: center;
+}
+
+.worm-act-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--wv-bg-2);
+  border: 1px solid var(--wv-stroke);
+  border-radius: 7px;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+}
+
+.worm-act-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--wv-text-1);
+}
+
+.worm-act-kind {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--wv-accent-bright);
+  background: var(--wv-accent-tint);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.worm-act-kind.off {
+  color: var(--wv-bad);
+  background: rgba(242, 109, 109, 0.12);
+}
+
+.worm-act-remove {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--wv-text-3);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--wv-speed) var(--wv-ease), background var(--wv-speed) var(--wv-ease);
+}
+
+.worm-act-remove:hover {
+  color: var(--wv-bad);
+  background: rgba(242, 109, 109, 0.12);
+}
+
+.worm-act-add {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 6px;
+  align-items: center;
+}
 
 :is(#worm-edit-toggle, #worm-confirm-overlay, .worm-row-bar, .worm-sel-toolbar) :where(button):focus-visible {
   outline: 2px solid var(--wv-accent);

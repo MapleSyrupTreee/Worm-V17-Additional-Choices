@@ -838,17 +838,47 @@
       let object = null;
       let rowId = null;
       let index = -1;
+      let rowWidth = '';
+      let rowTitle = '';
+      let activatedRows = [];
+      let rowsWithTerms = [];
       if (objId) {
         const ctx = getEditorCtx();
         if (ctx) {
           const loc = findObjectLocation(ctx.rows, objId);
-          if (loc) { object = loc.obj; rowId = loc.row.id; index = loc.objIdx; }
+          if (loc) {
+            object = loc.obj;
+            rowId = loc.row.id;
+            index = loc.objIdx;
+            rowWidth = loc.row.objectWidth || '';
+            rowTitle = loc.row.title || '';
+            // Rows whose visibility conditions reference this choice:
+            // {type:'id', required:true} = shows when picked,
+            // {type:'id', required:false} = hidden (incompatible) when picked.
+            activatedRows = ctx.rows
+              .map(row => {
+                const terms = Array.isArray(row.requireds) ? row.requireds : [];
+                const termIdx = terms.findIndex(t => t && t.type === 'id' && t.reqId === objId);
+                return { row, termIdx, term: termIdx >= 0 ? terms[termIdx] : null };
+              })
+              .filter(x => x.term)
+              .map(x => ({
+                id: x.row.id,
+                title: x.row.title || x.row.id,
+                required: !!x.term.required,
+                requireds: cloneValue(x.row.requireds || []),
+              }));
+            // Rows that already carry condition terms (for the add-select):
+            rowsWithTerms = ctx.rows
+              .filter(r => Array.isArray(r.requireds) && r.requireds.length > 0)
+              .map(r => ({ id: r.id, title: r.title || r.id, requireds: cloneValue(r.requireds) }));
+          }
         }
       }
       window.postMessage({
         source: 'WORM_CYOA_PAGE_SCRIPT',
         type: 'EDITOR_OBJECT',
-        data: { reqId: payload && payload.reqId, objId, rowId, index, object }
+        data: { reqId: payload && payload.reqId, objId, rowId, index, object, rowWidth, rowTitle, activatedRows, rowsWithTerms }
       }, '*');
     } else if (command === 'REQUEST_METADATA') {
       const piniaStore = findPiniaProjectStore();

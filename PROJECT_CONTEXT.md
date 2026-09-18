@@ -146,6 +146,16 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
   GOTCHA: CollectionLoader re-adds cards INCREMENTALLY after remount → reindex via debounced
   MutationObserver, not fixed timers. GOTCHA: undo/redo stacks hold {op, inverse} pairs.
   Remaining phases: P3 drag & drop, P4 row dialogs, P5 overlay persistence, P6 polish.
+- 0.2.5 fixes (user feedback on the Meta button): Card Width now shows "(Row default)" when the
+  object inherits the row width (objectWidth '' is the COMMON case — 14k of 14.3k objects) and
+  never silently overwrites; phantom modifier row removed (empty scores = empty editor + hint);
+  showScore checkbox dropped (field has 0 references in the deployed viewer bundle — scores
+  always display when present); Section Activation group added (lists rows gated by this choice
+  via their {type:'id', reqId} conditions, add/remove = updateRow ops; activateThisChoice is
+  comma-separated id list in the viewer). Diffing uses stable stringify + minimal upserts so
+  no-change saves emit zero ops. NOTE: CDP injection harness wedged 3× (page JS freeze) during
+  rapid automated tests; engine-only stress was stable and user-side real-extension testing
+  showed no freeze — if a real freeze occurs, capture what was clicked right before.
 - Version policy (user, 2026-09-17): **every commit bumps the patch** (`0.2.1`, `0.2.2`, …);
   roll the minor at feature milestones (`0.3.0` next). Keep `manifest.json`, the popup version
   pill, and this file in sync on every bump. Current: `0.2.1`.

@@ -356,9 +356,14 @@
     card: '.project-obj',
     cardTitle: '.obj-title',
   };
+  // Mirrors the viewer's ObjectSizes map (app/components/viewer/style/sizes.ts).
   const EDITOR_WIDTHS = [
-    ['col-12', 'Full width'], ['col-sm-6', 'Half'], ['col-md-4', 'Third'],
-    ['col-md-3', 'Quarter'], ['col-lg-2', 'Sixth'], ['col-xl-1', 'Twelfth'],
+    ['col-12', 'Full width'], ['col-sm-11', '11/12'], ['col-sm-10', '10/12'],
+    ['col-sm-9', '9/12'], ['col-sm-8', '8/12'], ['col-sm-7', '7/12'],
+    ['col-sm-6', 'Half'], ['col-sm-5', '5/12'], ['col-md-4', 'Third'],
+    ['col-md-3', 'Quarter'], ['w-20', 'Wide (w-20)'], ['col-lg-2', 'Sixth'],
+    ['w-14', 'w-14'], ['w-12', 'w-12'], ['w-11', 'w-11'], ['w-10', 'w-10'],
+    ['w-9', 'w-9'], ['col-xl-1', 'Twelfth'],
   ];
 
   function editorSend(command, payload) {
@@ -789,8 +794,21 @@
     const esc = escapeHtml;
     const isEmbeddedImage = typeof obj.image === 'string' && obj.image.startsWith('data:');
     const imageShown = isEmbeddedImage ? '' : (obj.image || '');
-    const widthOpts = EDITOR_WIDTHS.map(([v, label]) =>
-      `<option value="${v}"${v === (original.objectWidth || '') ? ' selected' : ''}>${label}</option>`).join('');
+    const rowWidth = resp.rowWidth || '';
+    const widthOpts = (() => {
+      const opts = [];
+      const rowLabel = 'Row default' + (rowWidth ? ' (' + rowWidth + ')' : '');
+      opts.push('<option value=""' + ((original.objectWidth || '') === '' ? ' selected' : '') + '>' + esc(rowLabel) + '</option>');
+      const known = new Set(['']);
+      for (const [v, label] of EDITOR_WIDTHS) {
+        known.add(v);
+        opts.push('<option value="' + v + '"' + (v === (original.objectWidth || '') ? ' selected' : '') + '>' + esc(label) + '</option>');
+      }
+      if (original.objectWidth && !known.has(original.objectWidth)) {
+        opts.push('<option value="' + esc(original.objectWidth) + '" selected>Current (' + esc(original.objectWidth) + ')</option>');
+      }
+      return opts.join('');
+    })();
     const scoreRowHtml = (s, origIdx) => {
       const s2 = s || {};
       const val = parseInt(s2.value, 10) || 0;
@@ -807,13 +825,28 @@
             <button type="button" class="worm-seg-btn${eff === 'gain' ? ' is-active' : ''}" data-eff="gain">+</button>
           </div>
           <input type="number" class="worm-form-input we-score-amt" min="0" value="${amt}">
-          <label class="worm-check we-score-show"><input type="checkbox"${s2.showScore === false ? '' : ' checked'}><span>show</span></label>
           <button type="button" class="worm-score-remove" title="Remove modifier">×</button>
         </div>`;
     };
-    const scoresHtml = (Array.isArray(original.scores) && original.scores.length > 0)
+    const scoreRowsHtml = (Array.isArray(original.scores) && original.scores.length > 0)
       ? original.scores.map((s, i) => scoreRowHtml(s, i)).join('')
-      : scoreRowHtml(null, -1);
+      : '';
+
+    // Section activation state: rows whose visibility conditions reference
+    // this choice ({type:'id', reqId}). required=true → row shows when this
+    // choice is picked; required=false → row hides when picked.
+    const actState = (resp.activatedRows || []).map(a => {
+      const requireds = a.requireds || [];
+      let origIdx = -1;
+      for (let i = 0; i < requireds.length; i++) {
+        const t = requireds[i];
+        if (t && t.type === 'id' && t.reqId === objId) { origIdx = i; break; }
+      }
+      return { rowId: a.id, title: a.title, required: !!a.required, requireds, isNew: false };
+    });
+    const removedActs = [];
+    const rowsWithTerms = resp.rowsWithTerms || [];
+    const allRowsList = (EDITOR_UI.data && EDITOR_UI.data.rows) || [];
 
     const overlay = document.createElement('div');
     overlay.id = 'worm-modal-overlay';
@@ -846,8 +879,21 @@
 
             <div class="worm-form-group">
               <label>Point Modifiers</label>
-              <div id="we-scores">${scoresHtml}</div>
+              <div id="we-scores">${scoreRowsHtml}</div>
+              <div class="worm-empty-hint" id="we-scores-hint"${scoreRowsHtml ? ' hidden' : ''}>No point modifiers on this choice — use “+ Add Modifier”.</div>
               <button type="button" id="we-add-score" class="worm-btn-ghost-sm worm-mt8">+ Add Modifier</button>
+            </div>
+            <div class="worm-form-group">
+              <label>Section Activation <span class="worm-label-soft">(rows gated by this choice)</span></label>
+              <div id="we-act-rows"></div>
+              <div class="worm-act-add worm-mt8">
+                <select id="we-act-row" class="worm-form-select"></select>
+                <select id="we-act-kind" class="worm-form-select">
+                  <option value="required">Shows when picked</option>
+                  <option value="incompatible">Hides when picked</option>
+                </select>
+                <button type="button" id="we-act-add" class="worm-btn-ghost-sm">Add</button>
+              </div>
             </div>
             <div class="worm-form-group">
               <label>Behavior</label>
@@ -868,12 +914,12 @@
               </div>
               <div class="worm-form-grid2 worm-mt8">
                 <div class="worm-form-group">
-                  <label for="we-activatethis">Activates choice (id)</label>
-                  <input type="text" id="we-activatethis" class="worm-form-input" value="${esc(original.activateThisChoice || '')}" placeholder="choice-id">
+                  <label for="we-activatethis">Activates choice ids (comma-separated)</label>
+                  <input type="text" id="we-activatethis" class="worm-form-input" value="${esc(original.activateThisChoice || '')}" placeholder="id1,id2,…">
                 </div>
                 <div class="worm-form-group">
-                  <label for="we-deactivatethis">Deactivates choice (id)</label>
-                  <input type="text" id="we-deactivatethis" class="worm-form-input" value="${esc(original.deactivateThisChoice || '')}" placeholder="choice-id">
+                  <label for="we-deactivatethis">Deactivates choice ids (comma-separated)</label>
+                  <input type="text" id="we-deactivatethis" class="worm-form-input" value="${esc(original.deactivateThisChoice || '')}" placeholder="id1,id2,…">
                 </div>
               </div>
               <div class="worm-check-grid worm-mt8">
@@ -912,15 +958,16 @@
       const eff = row.querySelector('.we-score-eff .worm-seg-btn.is-active');
       const effect = eff ? eff.dataset.eff : 'cost';
       const amt = Math.abs(parseInt(row.querySelector('.we-score-amt').value, 10)) || 0;
-      const show = row.querySelector('.we-score-show input').checked;
       const pt = pointTypes.find(p => p.id === ptId);
       const abbr = abbreviatePointName(pt ? (pt.name || pt.id) : 'Points');
+      // Preserve unknown/original fields (type, showScore, …) and overlay only
+      // the UI-editable ones.
       return {
+        ...origScore,
         id: ptId,
         value: effect === 'gain' ? String(-amt) : String(amt),
         beforeText: effect === 'gain' ? 'Gain:' : 'Cost:',
         afterText: abbr,
-        showScore: show,
         requireds: Array.isArray(origScore.requireds) ? origScore.requireds : [],
       };
     }
@@ -970,12 +1017,142 @@
       return patch;
     }
 
+    function deepCloneValue(value) {
+      try { return JSON.parse(JSON.stringify(value)); } catch (err) { return value; }
+    }
+
+    function buildActivationTerm(required) {
+      // Mirrors the project's real ConditionTerm shape for {type:'id'} terms.
+      return {
+        id: '',
+        type: 'id',
+        required: !!required,
+        reqId: objId,
+        reqId1: '', reqId2: '', reqId3: '',
+        reqPoints: 0,
+        operator: '',
+        orRequired: [{ req: '' }, { req: '' }, { req: '' }, { req: '' }],
+        requireds: [],
+        showRequired: false,
+        beforeText: 'Required:',
+        afterText: 'choice',
+      };
+    }
+
+    function updateScoreHint() {
+      const hint = overlay.querySelector('#we-scores-hint');
+      const rows = overlay.querySelectorAll('#we-scores .worm-score-edit').length;
+      if (hint) hint.hidden = rows > 0;
+    }
+
+    function renderActRows() {
+      const wrap = overlay.querySelector('#we-act-rows');
+      if (!wrap) return;
+      wrap.innerHTML = '';
+      if (actState.length === 0) {
+        const hint = document.createElement('div');
+        hint.className = 'worm-empty-hint';
+        hint.textContent = 'No sections are gated by this choice.';
+        wrap.appendChild(hint);
+        return;
+      }
+      actState.forEach((a) => {
+        const row = document.createElement('div');
+        row.className = 'worm-act-row';
+        const name = document.createElement('span');
+        name.className = 'worm-act-name';
+        name.textContent = a.title;
+        const kind = document.createElement('span');
+        kind.className = 'worm-act-kind' + (a.required ? '' : ' off');
+        kind.textContent = a.required ? 'shows when picked' : 'hides when picked';
+        const rm = document.createElement('button');
+        rm.type = 'button';
+        rm.className = 'worm-act-remove';
+        rm.title = 'Remove this condition';
+        rm.textContent = '×';
+        rm.addEventListener('click', () => {
+          const i = actState.indexOf(a);
+          if (i >= 0) {
+            removedActs.push({ rowId: a.rowId, requireds: deepCloneValue(a.requireds) });
+            actState.splice(i, 1);
+          }
+          renderActRows();
+          renderActRowSelect();
+        });
+        row.appendChild(name);
+        row.appendChild(kind);
+        row.appendChild(rm);
+        wrap.appendChild(row);
+      });
+    }
+
+    function renderActRowSelect() {
+      const sel = overlay.querySelector('#we-act-row');
+      if (!sel) return;
+      const used = new Set(actState.map(a => a.rowId));
+      const options = allRowsList
+        .filter(r => !used.has(r.id))
+        .map(r => `<option value="${esc(r.id)}">${esc(r.title || r.id)}</option>`)
+        .join('');
+      sel.innerHTML = options || '<option value="">No rows available</option>';
+    }
+
+    function stableStringify(value) {
+      // Key-order-insensitive JSON for structural comparison.
+      return JSON.stringify(value, (key, val) => {
+        if (val && typeof val === 'object' && !Array.isArray(val)) {
+          return Object.keys(val).sort().reduce((acc, k) => { acc[k] = val[k]; return acc; }, {});
+        }
+        return val;
+      });
+    }
+
+    function buildRowOps() {
+      const rowMap = new Map();
+      const ensure = (rowId, requireds) => {
+        if (!rowMap.has(rowId)) {
+          const base = deepCloneValue(requireds || []);
+          rowMap.set(rowId, { requireds: deepCloneValue(base), original: base });
+        }
+        return rowMap.get(rowId);
+      };
+      // Removals first, then (re-)additions — so a remove+re-add of the same
+      // row nets out to a single present term.
+      for (const r of removedActs) {
+        const entry = ensure(r.rowId, r.requireds);
+        entry.requireds = entry.requireds.filter(t => !(t && t.type === 'id' && t.reqId === objId));
+      }
+      for (const a of actState) {
+        const entry = ensure(a.rowId, a.requireds);
+        const idx = entry.requireds.findIndex(t => t && t.type === 'id' && t.reqId === objId);
+        if (idx >= 0) {
+          // Already gated by this choice — only the required flag can differ;
+          // touch nothing else so unchanged rows produce no op.
+          if (!!entry.requireds[idx].required !== !!a.required) {
+            entry.requireds[idx] = { ...entry.requireds[idx], required: !!a.required };
+          }
+        } else {
+          entry.requireds.push(buildActivationTerm(a.required));
+        }
+      }
+      const ops = [];
+      for (const [rowId, entry] of rowMap) {
+        if (stableStringify(entry.requireds) !== stableStringify(entry.original)) {
+          ops.push({ type: 'updateRow', rowId, patch: { requireds: entry.requireds } });
+        }
+      }
+      return ops;
+    }
+
     overlay.querySelector('#we-close').addEventListener('click', closeModal);
     overlay.querySelector('#we-cancel').addEventListener('click', closeModal);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
     overlay.querySelectorAll('.worm-score-edit').forEach(row => wireSegmented(row.querySelector('.we-score-eff')));
     overlay.querySelectorAll('.worm-score-remove').forEach(btn => {
-      btn.addEventListener('click', () => btn.closest('.worm-score-edit').remove());
+      btn.addEventListener('click', () => {
+        btn.closest('.worm-score-edit').remove();
+        updateScoreHint();
+      });
     });
     overlay.querySelector('#we-add-score').addEventListener('click', () => {
       const wrap = overlay.querySelector('#we-scores');
@@ -984,11 +1161,35 @@
       const row = temp.firstElementChild;
       wrap.appendChild(row);
       wireSegmented(row.querySelector('.we-score-eff'));
-      row.querySelector('.worm-score-remove').addEventListener('click', () => row.remove());
+      row.querySelector('.worm-score-remove').addEventListener('click', () => {
+        row.remove();
+        updateScoreHint();
+      });
+      updateScoreHint();
+    });
+    overlay.querySelector('#we-act-add').addEventListener('click', () => {
+      const sel = overlay.querySelector('#we-act-row');
+      const kind = overlay.querySelector('#we-act-kind').value;
+      const rowId = sel.value;
+      if (!rowId || actState.some(a => a.rowId === rowId)) return;
+      const withTerms = rowsWithTerms.find(r => r.id === rowId);
+      const rowInfo = allRowsList.find(r => r.id === rowId) || {};
+      actState.push({
+        rowId,
+        title: rowInfo.title || rowId,
+        required: kind === 'required',
+        requireds: withTerms ? deepCloneValue(withTerms.requireds) : [],
+        isNew: true,
+      });
+      renderActRows();
+      renderActRowSelect();
     });
     overlay.querySelector('#we-multi').addEventListener('change', (e) => {
       overlay.querySelector('#we-multi-limits').hidden = !e.target.checked;
     });
+    renderActRows();
+    renderActRowSelect();
+    updateScoreHint();
     overlay.querySelector('#we-reset').addEventListener('click', () => {
       overlay.querySelector('#we-title').value = original.title || '';
       overlay.querySelector('#we-text').value = original.text || '';
@@ -997,11 +1198,15 @@
       const wrap = overlay.querySelector('#we-scores');
       wrap.innerHTML = (Array.isArray(original.scores) && original.scores.length > 0)
         ? original.scores.map((s, i) => scoreRowHtml(s, i)).join('')
-        : scoreRowHtml(null, -1);
+        : '';
       wrap.querySelectorAll('.worm-score-edit').forEach(row => wireSegmented(row.querySelector('.we-score-eff')));
       wrap.querySelectorAll('.worm-score-remove').forEach(btn => {
-        btn.addEventListener('click', () => btn.closest('.worm-score-edit').remove());
+        btn.addEventListener('click', () => {
+          btn.closest('.worm-score-edit').remove();
+          updateScoreHint();
+        });
       });
+      updateScoreHint();
       overlay.querySelector('#we-visible').checked = original.isVisible !== false;
       overlay.querySelector('#we-notsel').checked = !!original.isNotSelectable;
       overlay.querySelector('#we-multi').checked = !!original.isSelectableMultiple;
@@ -1017,8 +1222,13 @@
     overlay.querySelector('#we-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const patch = buildPatch();
-      if (Object.keys(patch).length === 0) { closeModal(); return; }
-      await editorRequest('EDITOR_OP', { op: { type: 'updateObject', objId, patch } });
+      const rowOps = buildRowOps();
+      if (Object.keys(patch).length > 0) {
+        await editorRequest('EDITOR_OP', { op: { type: 'updateObject', objId, patch } });
+      }
+      for (const op of rowOps) {
+        await editorRequest('EDITOR_OP', { op });
+      }
       closeModal();
     });
 
