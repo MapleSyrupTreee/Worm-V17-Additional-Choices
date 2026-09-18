@@ -202,6 +202,95 @@
     }
   }
 
+  // Shared two-step row remount used by both injection (add/update) and removal.
+  // CollectionLoader renders each row's items incrementally with a timer that
+  // PAUSES once complete; it only resumes when the row's `isVisible` prop flips,
+  // so simply changing `objects` leaves the loader's internal list stale.
+  // Trick: empty the affected rows (their loader unmounts via v-if="objects.length>0"),
+  // then restore the full row copies 50ms later — the loader remounts and re-renders
+  // every item. Selection state lives in the store (`selected`/`selectedIds`), so it
+  // survives the remount. Row maps: rowId -> full replacement row object.
+  function swapRowsWithRemount(store, emptiedMap, restoreMap, successLog) {
+    const replaceRows = (stateVal, rowMap) => {
+      const file = stateVal.file;
+      const data = file.data;
+      store.store = {
+        ...stateVal,
+        file: {
+          ...file,
+          data: {
+            ...data,
+            rows: data.rows.map(r => rowMap.get(r.id) || r)
+          }
+        }
+      };
+    };
+
+    // Step 1: empty the affected rows -> CollectionLoader unmounts.
+    replaceRows(store.store, emptiedMap);
+
+    // Step 2: restore the pre-built full rows. Re-read state in case the app
+    // changed it in the interim; never merge with the live rows — they are the
+    // emptied copies written by step 1 (merging would corrupt object lists).
+    setTimeout(() => {
+      try {
+        const cur = store.store;
+        const curRows = cur?.file?.data?.rows;
+        if (!Array.isArray(curRows)) return;
+        replaceRows(cur, restoreMap);
+        if (successLog) console.log(successLog);
+      } catch (err) {
+        console.error('[Worm V17 Mod] Error during row remount (step 2):', err);
+      }
+    }, 50);
+  }
+
+  // Live-removes custom choices from the Pinia "project" store by id.
+  function removeChoicesFromPiniaStore(store, choiceIds) {
+    try {
+      const ids = new Set(choiceIds);
+      const stateVal = store.store;
+      if (!stateVal || stateVal.status !== 'loaded' || !stateVal.file?.data || !Array.isArray(stateVal.file.data.rows)) {
+        return false;
+      }
+      const rows = stateVal.file.data.rows;
+
+      // Build replacement copies only for rows that actually contain a target id;
+      // untouched rows keep their original object references.
+      const newRowById = new Map();
+      for (const row of rows) {
+        if (!Array.isArray(row.objects) || !row.objects.some(o => o && ids.has(o.id))) continue;
+        newRowById.set(row.id, { ...row, objects: row.objects.filter(o => !(o && ids.has(o.id))) });
+      }
+      if (newRowById.size === 0) return false;
+
+      const emptiedMap = new Map();
+      for (const rowId of newRowById.keys()) {
+        const origRow = rows.find(r => r.id === rowId);
+        emptiedMap.set(rowId, { ...origRow, objects: [] });
+      }
+      swapRowsWithRemount(store, emptiedMap, newRowById, '[Worm V17 Mod] Removed custom choices from Pinia store: ' + choiceIds.length);
+      return true;
+    } catch (err) {
+      console.error('[Worm V17 Mod] Error removing choices from Pinia store:', err);
+      return false;
+    }
+  }
+
+  // Legacy Vue 2 fallback: remove choices from the live app rows.
+  function removeChoicesFromVue2(app, choiceIds) {
+    try {
+      if (!Array.isArray(app.rows)) return;
+      const ids = new Set(choiceIds);
+      for (const row of app.rows) {
+        if (!Array.isArray(row.objects)) continue;
+        row.objects = row.objects.filter(o => !(o && ids.has(o.id)));
+      }
+    } catch (err) {
+      console.error('[Worm V17 Mod] Error removing choices from Vue 2:', err);
+    }
+  }
+
   function applyChoicesToPiniaStore(store, choices) {
     try {
       // On the Pinia store proxy, refs are unwrapped: `store.store` IS the raw
@@ -238,58 +327,17 @@
       }
       if (newRowById.size === 0) return false;
 
-      const replaceRows = (rowMap) => {
-        store.store = {
-          ...stateVal,
-          file: {
-            ...file,
-            data: {
-              ...data,
-              rows: rows.map(r => rowMap.get(r.id) || r)
-            }
-          }
-        };
-      };
-
-      // CollectionLoader renders each row's items incrementally with a timer that
-      // PAUSES once complete; it only resumes when the row's `isVisible` prop flips,
-      // so simply growing `objects` leaves the loader's internal list stale.
-      // Trick: empty the affected rows (their loader unmounts via v-if="objects.length>0"),
-      // then restore the full object list on the next tick — the loader remounts and
-      // re-renders every item, including the new choice. Selection state lives in the
-      // store (`selected`/`selectedIds`), so it survives the remount.
       const emptiedMap = new Map();
       for (const rowId of newRowById.keys()) {
         const origRow = rows.find(r => r.id === rowId);
         emptiedMap.set(rowId, { ...origRow, objects: [] });
       }
-      replaceRows(emptiedMap);
-
-      setTimeout(() => {
-        try {
-          // Re-read the current state in case the app changed it in the interim.
-          const cur = store.store;
-          const curRows = cur?.file?.data?.rows;
-          if (!Array.isArray(curRows)) return;
-          // Restore the affected rows WITH their full object lists (originals +
-          // the new choices) from newRowById. Do NOT merge with the live rows:
-          // they are the emptied copies written by step 1, so merging with them
-          // would drop every pre-existing object in the row.
-          store.store = {
-            ...cur,
-            file: {
-              ...cur.file,
-              data: {
-                ...cur.file.data,
-                rows: curRows.map(r => newRowById.get(r.id) || r)
-              }
-            }
-          };
-          console.log('[Worm V17 Mod] Injected & updated Pinia store with custom choices:', choices.length);
-        } catch (err) {
-          console.error('[Worm V17 Mod] Error during live injection (step 2):', err);
-        }
-      }, 50);
+      swapRowsWithRemount(
+        store,
+        emptiedMap,
+        newRowById,
+        '[Worm V17 Mod] Injected & updated Pinia store with custom choices: ' + choices.length
+      );
 
       return true;
     } catch (err) {
@@ -389,6 +437,29 @@
         source: 'WORM_CYOA_PAGE_SCRIPT',
         type: 'CHOICE_INJECTED_SUCCESS',
         choiceId: choice.id
+      }, '*');
+    } else if (command === 'REMOVE_CHOICE') {
+      const choiceIds = Array.isArray(payload) ? payload : [payload].filter(Boolean);
+      // Drop from the in-memory registry first so a later project.json fetch or
+      // full re-sync cannot resurrect the deleted choices.
+      const before = savedCustomChoices.length;
+      savedCustomChoices = savedCustomChoices.filter(c => !choiceIds.includes(c.id));
+      console.log('[Worm V17 Mod] Remove request for ' + choiceIds.length + ' choice(s); registry: ' + before + ' -> ' + savedCustomChoices.length);
+
+      let removedLive = false;
+      const piniaStore = findPiniaProjectStore();
+      if (piniaStore && piniaStore.store?.file?.data) {
+        removedLive = removeChoicesFromPiniaStore(piniaStore, choiceIds);
+      }
+      if (!removedLive) {
+        const vue2 = findVue2App();
+        if (vue2) removeChoicesFromVue2(vue2, choiceIds);
+      }
+
+      window.postMessage({
+        source: 'WORM_CYOA_PAGE_SCRIPT',
+        type: 'CHOICE_REMOVED_SUCCESS',
+        choiceIds
       }, '*');
     } else if (command === 'REQUEST_METADATA') {
       const piniaStore = findPiniaProjectStore();

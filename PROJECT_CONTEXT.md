@@ -136,16 +136,24 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
 **Still open (confirmed from code):**
 1. **`settings.enabled` toggle is dead** — popup writes it; nothing in content.js/page-script.js reads it.
 2. **Floating badge never appears** — `showFloatingBadge()` (content.js) defined but its only call site is commented out. README claims this feature works.
-3. **Popup Delete doesn't remove from live page** — only splices storage; no `REMOVE_CHOICE` command in page-script.js. Requires page reload.
-4. **JSON Import doesn't live-inject** — popup only re-pings `GET_PAGE_STATUS`; no re-sync command sent.
-5. **Over-broad permissions** — `<all_urls>` content scripts/host permissions vs. two known target sites.
-6. **`postMessage(..., '*')` everywhere** — no origin restriction.
-7. **Duplicated helpers** — `abbreviatePointName`, score normalization, `escapeHtml` across content.js / page-script.js / popup.js.
-8. **Hook give-up is silent-ish** — hook interval stops after 60 attempts with only a warning in DIAG builds; baseline has no warning.
-9. **Live injection visual flash** — the two-step remount briefly (~50ms) blanks the target row; cosmetic.
-10. **background.js `GET_STATUS` handler** — unused scaffolding *(inference)*.
-11. **Vue 2 fallback is dead code** on current ICC Neo builds (kept intentionally for legacy ICC).
-12. No tests or linting.
+3. **JSON Import doesn't live-inject** — popup only re-pings `GET_PAGE_STATUS`; no re-sync command sent.
+4. **Over-broad permissions** — `<all_urls>` content scripts/host permissions vs. two known target sites.
+5. **`postMessage(..., '*')` everywhere** — no origin restriction.
+6. **Duplicated helpers** — `abbreviatePointName`, score normalization, `escapeHtml` across content.js / page-script.js / popup.js.
+7. **Hook give-up is silent-ish** — hook interval stops after 60 attempts with only a warning in DIAG builds; baseline has no warning.
+8. **Live injection visual flash** — the two-step remount briefly (~50ms) blanks the target row; cosmetic (applies to removal too).
+9. **background.js `GET_STATUS` handler** — unused scaffolding *(inference)*.
+10. **Vue 2 fallback is dead code** on current ICC Neo builds (kept intentionally for legacy ICC).
+11. No tests or linting.
+
+**FIXED (implemented, pending user retest):**
+- ~~Popup Delete doesn't remove from live page~~ — `CHOICE_DELETED` (popup → content) is relayed
+  as `REMOVE_CHOICE` (content → page-script), which purges the id from `savedCustomChoices`
+  (so fetch-interceptor merges / full re-syncs can't resurrect it) and live-removes it from the
+  Pinia store via the same two-step row remount (`removeChoicesFromPiniaStore`; Vue 2 fallback:
+  `removeChoicesFromVue2`). The remount logic is shared with injection in
+  `swapRowsWithRemount(store, emptiedMap, restoreMap, successLog)`. Page-script confirms with
+  `CHOICE_REMOVED_SUCCESS`; content.js shows a "removed" toast.
 
 ## 9. Ambiguities / Open Questions
 - Is the Vue 2 fallback still needed (does the user ever target legacy ICC deployments)?
@@ -155,11 +163,12 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
 ## 10. Recommended Next Steps (prioritized)
 1. ~~Initialize git + baseline commit.~~ ✅ Done (`4dccfec`).
 2. ~~Fix live injection without page refresh.~~ ✅ Done & user-verified (`d5d40dc` + `722c49f`).
-3. Restore floating badge invocation; honor `settings.enabled`/`showIndicator` in content.js.
-4. Add `REMOVE_CHOICE` / full re-sync command to page-script (fix popup delete + import live update).
-5. Narrow `host_permissions` / content-script matches; restrict postMessage origins.
-6. Extract shared helpers into a common module; deduplicate.
-7. Optional: ESLint + a manual smoke-test checklist; remove diagnostic leftovers if any remain.
+3. ~~Popup delete updates the live page (`REMOVE_CHOICE`).~~ Implemented (`removeChoicesFromPiniaStore` + `swapRowsWithRemount` refactor) — pending user retest.
+4. Restore floating badge invocation; honor `settings.enabled`/`showIndicator` in content.js.
+5. JSON Import live re-sync (reuse the same remount machinery; add a re-sync command that injects new + removes gone ids).
+6. Narrow `host_permissions` / content-script matches; restrict postMessage origins.
+7. Extract shared helpers into a common module; deduplicate.
+8. Optional: ESLint + a manual smoke-test checklist; remove diagnostic leftovers if any remain.
 
 ## 11. Safe Dev Notes for Future Sessions
 - Reload the unpacked extension after any file edit; refresh the CYOA tab.

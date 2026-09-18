@@ -187,9 +187,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         await chrome.storage.local.set({ customChoices });
         renderChoicesList(customChoices);
 
-        // Tell active tab to sync
+        // Tell the live page to drop the choice (no reload needed)
         if (activeTabId) {
-          chrome.tabs.sendMessage(activeTabId, { action: 'GET_PAGE_STATUS' }).catch(() => {});
+          chrome.tabs.sendMessage(activeTabId, {
+            action: 'CHOICE_DELETED',
+            choiceId: removed.id
+          }).catch(() => {});
         }
       });
     });

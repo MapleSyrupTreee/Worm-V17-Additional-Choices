@@ -87,6 +87,8 @@
       // showFloatingBadge();
     } else if (event.data.type === 'CHOICE_INJECTED_SUCCESS') {
       showToast('Custom choice added to CYOA!');
+    } else if (event.data.type === 'CHOICE_REMOVED_SUCCESS') {
+      showToast('Custom choice removed from CYOA!');
     }
   });
 
@@ -106,6 +108,16 @@
       return true;
     } else if (message.action === 'INJECT_CHOICE_FROM_POPUP') {
       handleInjectChoice(message.choice);
+      sendResponse({ status: 'ok' });
+      return true;
+    } else if (message.action === 'CHOICE_DELETED') {
+      // Relay the deletion to page-script so the live page drops the choice
+      // without a page reload.
+      window.postMessage({
+        target: 'WORM_CYOA_PAGE_SCRIPT',
+        command: 'REMOVE_CHOICE',
+        payload: message.choiceId
+      }, '*');
       sendResponse({ status: 'ok' });
       return true;
     }
