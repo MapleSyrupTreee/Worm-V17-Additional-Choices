@@ -86,6 +86,19 @@
       showToast('Custom choice added to CYOA!');
     } else if (event.data.type === 'CHOICE_REMOVED_SUCCESS') {
       showToast('Custom choice removed from CYOA!');
+    } else if (event.data.type === 'EDITOR_MODE_CHANGED') {
+      editorHandleMode(event.data.data);
+    } else if (event.data.type === 'EDITOR_DATA') {
+      editorResolve(event.data.data && event.data.data.reqId, event.data.data);
+    } else if (event.data.type === 'EDITOR_OBJECT') {
+      editorResolve(event.data.data && event.data.data.reqId, event.data.data);
+    } else if (event.data.type === 'EDITOR_RESULT') {
+      editorResolve(event.data.data && event.data.data.reqId, event.data.data);
+      if (event.data.data && !event.data.data.ok && event.data.data.error) {
+        showToast('Editor: ' + event.data.data.error);
+      }
+    } else if (event.data.type === 'EDITOR_DATA_CHANGED') {
+      editorHandleDataChanged(event.data.data);
     }
   });
 
@@ -308,6 +321,707 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
   }
+
+  // =========================================================================
+  // 7. Interactive Editor ("Worm Forge")
+  //    Toggle button → edit mode over the live viewer. Cards are matched to
+  //    store objects by unique title with an order-based fallback; the mapping
+  //    lives here in the isolated world and is rebuilt after every mutation
+  //    broadcast. Selection chrome is plain DOM + fixed layers.
+  // =========================================================================
+  const EDITOR_UI = {
+    active: false,
+    data: null,        // snapshot { rows, pointTypes, projectName }
+    selection: null,   // { objId }
+    reqCounter: 0,
+    pending: new Map(),
+    layerEl: null,
+    selBoxEl: null,
+    toolbarEl: null,
+    toggleBtn: null,
+    rafId: 0,
+    clickHandler: null,
+    keyHandler: null,
+    rowBars: [],
+    observer: null,
+    observerTimer: 0,
+  };
+  const editorCardIndex = new Map();  // objId -> card element
+  const editorElIndex = new Map();    // card element -> objId
+
+  const EDITOR_SEL = {
+    rowWrapper: '.project-row-wrapper',
+    rowHeader: '.row-header',
+    cardGrid: '.items-container > .row',
+    card: '.project-obj',
+    cardTitle: '.obj-title',
+  };
+  const EDITOR_WIDTHS = [
+    ['col-12', 'Full width'], ['col-sm-6', 'Half'], ['col-md-4', 'Third'],
+    ['col-md-3', 'Quarter'], ['col-lg-2', 'Sixth'], ['col-xl-1', 'Twelfth'],
+  ];
+
+  function editorSend(command, payload) {
+    window.postMessage({ target: 'WORM_CYOA_PAGE_SCRIPT', command, payload }, '*');
+  }
+
+  function editorRequest(command, payload = {}) {
+    return new Promise((resolve) => {
+      const reqId = 'er' + (++EDITOR_UI.reqCounter);
+      EDITOR_UI.pending.set(reqId, resolve);
+      editorSend(command, { ...payload, reqId });
+      setTimeout(() => {
+        if (EDITOR_UI.pending.has(reqId)) {
+          EDITOR_UI.pending.delete(reqId);
+          resolve(null);
+        }
+      }, 8000);
+    });
+  }
+
+  function editorResolve(reqId, value) {
+    if (reqId && EDITOR_UI.pending.has(reqId)) {
+      const resolve = EDITOR_UI.pending.get(reqId);
+      EDITOR_UI.pending.delete(reqId);
+      resolve(value);
+    }
+  }
+
+  function ensureEditorToggle() {
+    if (document.getElementById('worm-edit-toggle')) return;
+    const btn = document.createElement('button');
+    btn.id = 'worm-edit-toggle';
+    btn.className = 'worm-editor-ui';
+    btn.type = 'button';
+    btn.textContent = '✎ Edit CYOA';
+    btn.title = 'Toggle the interactive editor (Ctrl+E)';
+    btn.addEventListener('click', () => editorSetMode(!EDITOR_UI.active));
+    document.body.appendChild(btn);
+    EDITOR_UI.toggleBtn = btn;
+
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'e' || e.key === 'E')) {
+        const tag = (e.target && e.target.tagName) || '';
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
+        e.preventDefault();
+        editorSetMode(!EDITOR_UI.active);
+      }
+    });
+  }
+
+  function editorSetMode(enabled) {
+    editorSend('EDITOR_SET_MODE', { enabled });
+  }
+
+  function editorHandleMode(data) {
+    const enabled = !!(data && data.enabled);
+    if (enabled === EDITOR_UI.active) {
+      if (enabled && data && data.snapshot) { EDITOR_UI.data = data.snapshot; editorIndexCards(); }
+      return;
+    }
+    EDITOR_UI.active = enabled;
+    document.body.classList.toggle('worm-edit-mode', enabled);
+    if (EDITOR_UI.toggleBtn) {
+      EDITOR_UI.toggleBtn.classList.toggle('active', enabled);
+      EDITOR_UI.toggleBtn.textContent = enabled ? '✓ Done Editing' : '✎ Edit CYOA';
+    }
+    if (enabled) {
+      if (data && data.snapshot) EDITOR_UI.data = data.snapshot;
+      editorEnter();
+      showToast('Editor on — click a choice to select it. Ctrl+E to exit.');
+    } else {
+      editorExit();
+    }
+  }
+
+  function editorHandleDataChanged(data) {
+    if (!data) return;
+    if (data.snapshot && EDITOR_UI.active) EDITOR_UI.data = data.snapshot;
+    if (!EDITOR_UI.active) return;
+    const keep = EDITOR_UI.selection && EDITOR_UI.selection.objId;
+    if (data.label) showToast(data.label);
+    if (data.opType === 'deleteObjects' && Array.isArray(data.deletedIds) && data.deletedIds.length > 0) {
+      editorPurgeDeletedCustomChoices(data.deletedIds);
+    } else if (data.opType === 'duplicateObject' && data.extra && data.extra.object) {
+      editorTrackDuplicate(data.extra.object);
+    }
+    // Remounts settle in two steps (empty now, restore ~50ms later), so
+    // re-index immediately AND after the DOM stabilizes.
+    const reindex = () => {
+      if (!EDITOR_UI.active) return;
+      editorIndexCards();
+      if (keep && editorCardIndex.has(keep)) {
+        EDITOR_UI.selection = { objId: keep };
+        editorUpdateSelectionPosition();
+        if (EDITOR_UI.selBoxEl) EDITOR_UI.selBoxEl.style.display = 'block';
+        if (EDITOR_UI.toolbarEl) EDITOR_UI.toolbarEl.style.display = 'flex';
+      } else {
+        editorDeselect();
+      }
+    };
+    reindex();
+    setTimeout(reindex, 120);
+    setTimeout(reindex, 500);
+  }
+
+  async function editorPurgeDeletedCustomChoices(ids) {
+    // Deleting custom choices must also remove them from saved storage,
+    // otherwise the fetch interceptor would resurrect them on next load.
+    try {
+      if (!Array.isArray(ids) || ids.length === 0) return;
+      const { customChoices = [] } = await chrome.storage.local.get('customChoices');
+      const filtered = customChoices.filter(c => !ids.includes(c.id));
+      if (filtered.length !== customChoices.length) {
+        await chrome.storage.local.set({ customChoices: filtered });
+      }
+    } catch (err) {
+      console.warn('[Worm V17 Mod] Failed to purge deleted custom choices:', err);
+    }
+  }
+
+  async function editorTrackDuplicate(object) {
+    // Duplicated choices are user-created: track them like other custom
+    // choices so they persist across reloads.
+    try {
+      if (!object) return;
+      const { customChoices = [] } = await chrome.storage.local.get('customChoices');
+      if (!customChoices.some(c => c.id === object.id)) {
+        customChoices.push(object);
+        await chrome.storage.local.set({ customChoices });
+      }
+    } catch (err) {
+      console.warn('[Worm V17 Mod] Failed to track duplicated choice:', err);
+    }
+  }
+
+  function editorRowDataForWrapper(wrapper) {
+    const wrappers = document.querySelectorAll(EDITOR_SEL.rowWrapper);
+    const i = Array.prototype.indexOf.call(wrappers, wrapper);
+    return i >= 0 && EDITOR_UI.data ? EDITOR_UI.data.rows[i] : null;
+  }
+
+  function editorIndexCards() {
+    editorCardIndex.clear();
+    editorElIndex.clear();
+    if (!EDITOR_UI.data) return;
+    const wrappers = document.querySelectorAll(EDITOR_SEL.rowWrapper);
+    wrappers.forEach((wrapper) => {
+      const rowData = editorRowDataForWrapper(wrapper);
+      if (!rowData) return;
+      const cards = Array.from(wrapper.querySelectorAll(EDITOR_SEL.cardGrid + ' > .col > ' + EDITOR_SEL.card));
+      const pool = rowData.objects.map(o => ({ id: o.id, title: o.title || '' }));
+      const assigned = new Array(cards.length).fill(null);
+      // Pass 1: unique exact-title matches
+      cards.forEach((card, i) => {
+        const title = (card.querySelector(EDITOR_SEL.cardTitle)?.textContent || '').trim();
+        if (!title) return;
+        const hits = pool.filter(o => o && o.title === title);
+        if (hits.length === 1) {
+          assigned[i] = hits[0].id;
+          pool[pool.indexOf(hits[0])] = null;
+        }
+      });
+      // Pass 2: everything else in DOM order
+      let pi = 0;
+      cards.forEach((card, i) => {
+        if (assigned[i]) return;
+        while (pi < pool.length && !pool[pi]) pi++;
+        if (pi < pool.length) {
+          assigned[i] = pool[pi].id;
+          pool[pi] = null;
+        }
+      });
+      cards.forEach((card, i) => {
+        if (!assigned[i]) return;
+        editorCardIndex.set(assigned[i], card);
+        editorElIndex.set(card, assigned[i]);
+      });
+    });
+  }
+
+  function editorObjIdForElement(el) {
+    let node = el;
+    while (node && node !== document.body) {
+      if (editorElIndex.has(node)) return editorElIndex.get(node);
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  function editorEnter() {
+    const layer = document.createElement('div');
+    layer.id = 'worm-editor-layer';
+    layer.className = 'worm-editor-ui';
+    const selBox = document.createElement('div');
+    selBox.className = 'worm-sel-box';
+    selBox.style.display = 'none';
+    const toolbar = document.createElement('div');
+    toolbar.className = 'worm-sel-toolbar';
+    toolbar.style.display = 'none';
+    toolbar.innerHTML = `
+      <button type="button" data-act="edit" title="Edit this choice">✎ Edit</button>
+      <button type="button" data-act="duplicate" title="Duplicate this choice">⧉</button>
+      <button type="button" data-act="delete" title="Delete this choice (Del)">🗑</button>`;
+    toolbar.addEventListener('click', (e) => {
+      const act = e.target && e.target.dataset ? e.target.dataset.act : null;
+      if (!act || !EDITOR_UI.selection) return;
+      if (act === 'edit') editorOpenEditModal(EDITOR_UI.selection.objId);
+      else if (act === 'duplicate') editorDuplicate(EDITOR_UI.selection.objId);
+      else if (act === 'delete') editorDelete(EDITOR_UI.selection.objId);
+    });
+    layer.appendChild(selBox);
+    layer.appendChild(toolbar);
+    document.body.appendChild(layer);
+    EDITOR_UI.layerEl = layer;
+    EDITOR_UI.selBoxEl = selBox;
+    EDITOR_UI.toolbarEl = toolbar;
+
+    editorIndexCards();
+    editorAttachRowBars();
+
+    // The viewer's CollectionLoader re-adds cards INCREMENTALLY after a
+    // remount, so a fixed-delay reindex can miss late batches. Watch the DOM
+    // instead: whenever card elements change, re-index (debounced).
+    EDITOR_UI.observer = new MutationObserver(() => {
+      if (!EDITOR_UI.active) return;
+      clearTimeout(EDITOR_UI.observerTimer);
+      EDITOR_UI.observerTimer = setTimeout(() => {
+        if (!EDITOR_UI.active) return;
+        editorIndexCards();
+        if (EDITOR_UI.selection) {
+          if (editorCardIndex.has(EDITOR_UI.selection.objId)) {
+            editorUpdateSelectionPosition();
+            if (EDITOR_UI.selBoxEl) EDITOR_UI.selBoxEl.style.display = 'block';
+            if (EDITOR_UI.toolbarEl) EDITOR_UI.toolbarEl.style.display = 'flex';
+          } else {
+            editorDeselect();
+          }
+        }
+      }, 150);
+    });
+    EDITOR_UI.observer.observe(document.body, { childList: true, subtree: true });
+
+    EDITOR_UI.clickHandler = (e) => editorOnCaptureClick(e);
+    EDITOR_UI.keyHandler = (e) => editorOnKeyDown(e);
+    document.addEventListener('click', EDITOR_UI.clickHandler, true);
+    document.addEventListener('keydown', EDITOR_UI.keyHandler, true);
+
+    const frame = () => {
+      if (!EDITOR_UI.active) return;
+      editorUpdateSelectionPosition();
+      EDITOR_UI.rafId = requestAnimationFrame(frame);
+    };
+    EDITOR_UI.rafId = requestAnimationFrame(frame);
+  }
+
+  function editorExit() {
+    if (EDITOR_UI.rafId) cancelAnimationFrame(EDITOR_UI.rafId);
+    if (EDITOR_UI.observer) { EDITOR_UI.observer.disconnect(); EDITOR_UI.observer = null; }
+    clearTimeout(EDITOR_UI.observerTimer);
+    if (EDITOR_UI.clickHandler) document.removeEventListener('click', EDITOR_UI.clickHandler, true);
+    if (EDITOR_UI.keyHandler) document.removeEventListener('keydown', EDITOR_UI.keyHandler, true);
+    editorRemoveRowBars();
+    if (EDITOR_UI.layerEl) EDITOR_UI.layerEl.remove();
+    EDITOR_UI.layerEl = null;
+    EDITOR_UI.selBoxEl = null;
+    EDITOR_UI.toolbarEl = null;
+    EDITOR_UI.selection = null;
+    editorCardIndex.clear();
+    editorElIndex.clear();
+  }
+
+  function editorAttachRowBars() {
+    editorRemoveRowBars();
+    if (!EDITOR_UI.data) return;
+    document.querySelectorAll(EDITOR_SEL.rowWrapper).forEach((wrapper) => {
+      const rowData = editorRowDataForWrapper(wrapper);
+      const header = wrapper.querySelector(EDITOR_SEL.rowHeader);
+      if (!header || !rowData) return;
+      const bar = document.createElement('div');
+      bar.className = 'worm-row-bar worm-editor-ui';
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.textContent = '＋';
+      addBtn.title = 'Add a choice to this row';
+      addBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openAddChoiceModal(rowData.id);
+      });
+      bar.appendChild(addBtn);
+      header.appendChild(bar);
+      EDITOR_UI.rowBars.push(bar);
+    });
+  }
+
+  function editorRemoveRowBars() {
+    EDITOR_UI.rowBars.forEach(bar => bar.remove());
+    EDITOR_UI.rowBars = [];
+  }
+
+  function editorSelect(objId) {
+    EDITOR_UI.selection = { objId };
+    editorUpdateSelectionPosition();
+    if (EDITOR_UI.selBoxEl) EDITOR_UI.selBoxEl.style.display = 'block';
+    if (EDITOR_UI.toolbarEl) EDITOR_UI.toolbarEl.style.display = 'flex';
+  }
+
+  function editorDeselect() {
+    EDITOR_UI.selection = null;
+    if (EDITOR_UI.selBoxEl) EDITOR_UI.selBoxEl.style.display = 'none';
+    if (EDITOR_UI.toolbarEl) EDITOR_UI.toolbarEl.style.display = 'none';
+  }
+
+  function editorUpdateSelectionPosition() {
+    if (!EDITOR_UI.selection || !EDITOR_UI.selBoxEl || !EDITOR_UI.toolbarEl) return;
+    const card = editorCardIndex.get(EDITOR_UI.selection.objId);
+    if (!card || !card.isConnected) {
+      editorDeselect();
+      return;
+    }
+    const r = card.getBoundingClientRect();
+    const box = EDITOR_UI.selBoxEl;
+    box.style.left = (r.left - 3) + 'px';
+    box.style.top = (r.top - 3) + 'px';
+    box.style.width = (r.width + 6) + 'px';
+    box.style.height = (r.height + 6) + 'px';
+    const tb = EDITOR_UI.toolbarEl;
+    const above = r.top > 56;
+    tb.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 240)) + 'px';
+    tb.style.top = (above ? r.top - 44 : r.bottom + 8) + 'px';
+  }
+
+  function editorOnCaptureClick(e) {
+    if (!EDITOR_UI.active) return;
+    if (e.target.closest('.worm-editor-ui, #worm-editor-layer, #worm-modal-overlay, #worm-confirm-overlay')) return;
+    const cardEl = e.target.closest(EDITOR_SEL.card);
+    if (cardEl) {
+      const objId = editorObjIdForElement(cardEl);
+      if (objId) {
+        e.preventDefault();
+        e.stopPropagation();
+        editorSelect(objId);
+      }
+      return;
+    }
+    if (EDITOR_UI.selection) editorDeselect();
+  }
+
+  function editorOnKeyDown(e) {
+    if (!EDITOR_UI.active) return;
+    const tag = (e.target && e.target.tagName) || '';
+    const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable);
+    if (e.key === 'Escape') {
+      if (EDITOR_UI.selection) editorDeselect();
+      return;
+    }
+    if (typing) return;
+    if ((e.key === 'Delete' || e.key === 'Backspace') && EDITOR_UI.selection) {
+      e.preventDefault();
+      editorDelete(EDITOR_UI.selection.objId);
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+      e.preventDefault();
+      editorRequest('EDITOR_UNDO');
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && ((e.key === 'y' || e.key === 'Y') || (e.shiftKey && (e.key === 'Z' || e.key === 'z')))) {
+      e.preventDefault();
+      editorRequest('EDITOR_REDO');
+    }
+  }
+
+  async function editorDuplicate(objId) {
+    await editorRequest('EDITOR_OP', { op: { type: 'duplicateObject', objId } });
+  }
+
+  async function editorDelete(objId) {
+    const ok = await wormConfirm('Delete this choice? You can undo with Ctrl+Z.');
+    if (!ok) return;
+    await editorRequest('EDITOR_OP', { op: { type: 'deleteObjects', ids: [objId] } });
+  }
+
+  function wormConfirm(message) {
+    return new Promise((resolve) => {
+      if (document.getElementById('worm-confirm-overlay')) { resolve(false); return; }
+      const overlay = document.createElement('div');
+      overlay.id = 'worm-confirm-overlay';
+      overlay.className = 'worm-editor-ui';
+      const dialog = document.createElement('div');
+      dialog.className = 'worm-confirm-dialog';
+      const p = document.createElement('p');
+      p.textContent = message;
+      const actions = document.createElement('div');
+      actions.className = 'worm-confirm-actions';
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'worm-btn-secondary';
+      cancelBtn.textContent = 'Cancel';
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'worm-btn-danger';
+      deleteBtn.textContent = 'Delete';
+      actions.appendChild(cancelBtn);
+      actions.appendChild(deleteBtn);
+      dialog.appendChild(p);
+      dialog.appendChild(actions);
+      overlay.appendChild(dialog);
+      const done = (val) => { overlay.remove(); resolve(val); };
+      cancelBtn.addEventListener('click', () => done(false));
+      deleteBtn.addEventListener('click', () => done(true));
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) done(false); });
+      document.body.appendChild(overlay);
+      deleteBtn.focus();
+    });
+  }
+
+  async function editorOpenEditModal(objId) {
+    if (document.getElementById('worm-modal-overlay')) return;
+    const resp = await editorRequest('EDITOR_GET_OBJECT', { objId });
+    if (!resp || !resp.object) { showToast('Could not load that choice.'); return; }
+    const obj = resp.object;
+    const original = JSON.parse(JSON.stringify(obj));
+    const pointTypes = (EDITOR_UI.data && EDITOR_UI.data.pointTypes) || [];
+    const esc = escapeHtml;
+    const isEmbeddedImage = typeof obj.image === 'string' && obj.image.startsWith('data:');
+    const imageShown = isEmbeddedImage ? '' : (obj.image || '');
+    const widthOpts = EDITOR_WIDTHS.map(([v, label]) =>
+      `<option value="${v}"${v === (original.objectWidth || '') ? ' selected' : ''}>${label}</option>`).join('');
+    const scoreRowHtml = (s, origIdx) => {
+      const s2 = s || {};
+      const val = parseInt(s2.value, 10) || 0;
+      const isGain = val < 0 || s2.beforeText === 'Gain:';
+      const amt = Math.abs(val) || (origIdx >= 0 ? 0 : 5);
+      const eff = isGain ? 'gain' : 'cost';
+      const ptOptions = (pointTypes.length > 0 ? pointTypes : [{ id: 'points', name: 'Points' }]).map(p =>
+        `<option value="${esc(p.id)}"${p.id === s2.id ? ' selected' : ''}>${esc(p.name || p.id)}</option>`).join('');
+      return `
+        <div class="worm-score-edit" data-orig="${origIdx}">
+          <select class="worm-form-select we-score-type">${ptOptions}</select>
+          <div class="worm-segmented worm-seg-sm we-score-eff" role="group" aria-label="Effect">
+            <button type="button" class="worm-seg-btn${eff === 'cost' ? ' is-active' : ''}" data-eff="cost">−</button>
+            <button type="button" class="worm-seg-btn${eff === 'gain' ? ' is-active' : ''}" data-eff="gain">+</button>
+          </div>
+          <input type="number" class="worm-form-input we-score-amt" min="0" value="${amt}">
+          <label class="worm-check we-score-show"><input type="checkbox"${s2.showScore === false ? '' : ' checked'}><span>show</span></label>
+          <button type="button" class="worm-score-remove" title="Remove modifier">×</button>
+        </div>`;
+    };
+    const scoresHtml = (Array.isArray(original.scores) && original.scores.length > 0)
+      ? original.scores.map((s, i) => scoreRowHtml(s, i)).join('')
+      : scoreRowHtml(null, -1);
+
+    const overlay = document.createElement('div');
+    overlay.id = 'worm-modal-overlay';
+    overlay.innerHTML = `
+      <div id="worm-modal-dialog">
+        <div class="worm-modal-header">
+          <h3><span class="worm-modal-glyph">✎</span> Edit Choice</h3>
+          <button type="button" class="worm-modal-close-btn" id="we-close" title="Close">&times;</button>
+        </div>
+        <form id="we-form">
+          <div class="worm-modal-body">
+            <div class="worm-form-group">
+              <label for="we-title">Choice Title</label>
+              <input type="text" id="we-title" class="worm-form-input" value="${esc(original.title || '')}" required>
+            </div>
+            <div class="worm-form-group">
+              <label for="we-text">Description</label>
+              <textarea id="we-text" class="worm-form-textarea">${esc(original.text || '')}</textarea>
+            </div>
+            <div class="worm-form-grid2">
+              <div class="worm-form-group">
+                <label for="we-image">Image URL ${isEmbeddedImage ? '<span class="worm-label-soft">(embedded image kept unless replaced)</span>' : ''}</label>
+                <input type="text" id="we-image" class="worm-form-input" value="${esc(imageShown)}" placeholder="https://example.com/image.webp">
+              </div>
+              <div class="worm-form-group">
+                <label for="we-width">Card Width</label>
+                <select id="we-width" class="worm-form-select">${widthOpts}</select>
+              </div>
+            </div>
+
+            <div class="worm-form-group">
+              <label>Point Modifiers</label>
+              <div id="we-scores">${scoresHtml}</div>
+              <button type="button" id="we-add-score" class="worm-btn-ghost-sm worm-mt8">+ Add Modifier</button>
+            </div>
+            <div class="worm-form-group">
+              <label>Behavior</label>
+              <div class="worm-check-grid">
+                <label class="worm-check"><input type="checkbox" id="we-visible"${original.isVisible === false ? '' : ' checked'}><span>Visible</span></label>
+                <label class="worm-check"><input type="checkbox" id="we-notsel"${original.isNotSelectable ? ' checked' : ''}><span>Not selectable</span></label>
+                <label class="worm-check"><input type="checkbox" id="we-multi"${original.isSelectableMultiple ? ' checked' : ''}><span>Pick multiple times</span></label>
+              </div>
+              <div class="worm-form-grid2 worm-mt8" id="we-multi-limits"${original.isSelectableMultiple ? '' : ' hidden'}>
+                <div class="worm-form-group">
+                  <label for="we-maxpicks">Max picks</label>
+                  <input type="number" id="we-maxpicks" class="worm-form-input" min="1" value="${esc(String(original.numMultipleTimesPluss ?? 1))}">
+                </div>
+                <div class="worm-form-group">
+                  <label for="we-minpicks">Min picks</label>
+                  <input type="number" id="we-minpicks" class="worm-form-input" min="0" value="${esc(String(original.numMultipleTimesMinus ?? 0))}">
+                </div>
+              </div>
+              <div class="worm-form-grid2 worm-mt8">
+                <div class="worm-form-group">
+                  <label for="we-activatethis">Activates choice (id)</label>
+                  <input type="text" id="we-activatethis" class="worm-form-input" value="${esc(original.activateThisChoice || '')}" placeholder="choice-id">
+                </div>
+                <div class="worm-form-group">
+                  <label for="we-deactivatethis">Deactivates choice (id)</label>
+                  <input type="text" id="we-deactivatethis" class="worm-form-input" value="${esc(original.deactivateThisChoice || '')}" placeholder="choice-id">
+                </div>
+              </div>
+              <div class="worm-check-grid worm-mt8">
+                <label class="worm-check"><input type="checkbox" id="we-actother"${original.activateOtherChoice ? ' checked' : ''}><span>When picked, activate the id above</span></label>
+                <label class="worm-check"><input type="checkbox" id="we-deactother"${original.deactivateOtherChoice ? ' checked' : ''}><span>When picked, deactivate the id above</span></label>
+              </div>
+            </div>
+            <div class="worm-form-group worm-narrow">
+              <label for="we-template">Template #</label>
+              <input type="number" id="we-template" class="worm-form-input" min="1" value="${esc(String(original.template ?? 1))}">
+            </div>
+          </div>
+          <div class="worm-modal-footer">
+            <button type="button" class="worm-btn-ghost-sm" id="we-reset">Reset</button>
+            <span class="worm-footer-spacer"></span>
+            <button type="button" class="worm-btn-secondary" id="we-cancel">Cancel</button>
+            <button type="submit" class="worm-btn-primary">Save Changes</button>
+          </div>
+        </form>
+      </div>`;
+
+    function closeModal() { overlay.remove(); }
+
+    function wireSegmented(container) {
+      container.querySelectorAll('.worm-seg-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          container.querySelectorAll('.worm-seg-btn').forEach(b => b.classList.toggle('is-active', b === btn));
+        });
+      });
+    }
+
+    function scoreRowFromUi(row) {
+      const origIdx = parseInt(row.dataset.orig, 10);
+      const origScore = (origIdx >= 0 && Array.isArray(original.scores) && original.scores[origIdx]) || {};
+      const ptId = row.querySelector('.we-score-type').value || 'points';
+      const eff = row.querySelector('.we-score-eff .worm-seg-btn.is-active');
+      const effect = eff ? eff.dataset.eff : 'cost';
+      const amt = Math.abs(parseInt(row.querySelector('.we-score-amt').value, 10)) || 0;
+      const show = row.querySelector('.we-score-show input').checked;
+      const pt = pointTypes.find(p => p.id === ptId);
+      const abbr = abbreviatePointName(pt ? (pt.name || pt.id) : 'Points');
+      return {
+        id: ptId,
+        value: effect === 'gain' ? String(-amt) : String(amt),
+        beforeText: effect === 'gain' ? 'Gain:' : 'Cost:',
+        afterText: abbr,
+        showScore: show,
+        requireds: Array.isArray(origScore.requireds) ? origScore.requireds : [],
+      };
+    }
+
+    function buildPatch() {
+      const patch = {};
+      const title = overlay.querySelector('#we-title').value.trim();
+      if (title !== (original.title || '')) patch.title = title;
+      const text = overlay.querySelector('#we-text').value;
+      if (text !== (original.text || '')) patch.text = text;
+      const image = overlay.querySelector('#we-image').value.trim();
+      if (!isEmbeddedImage && image !== (original.image || '')) {
+        patch.image = image;
+        patch.imageIsUrl = /^https?:\/\//i.test(image);
+      }
+      const width = overlay.querySelector('#we-width').value;
+      if (width !== (original.objectWidth || '')) patch.objectWidth = width;
+
+      const scoreRows = Array.from(overlay.querySelectorAll('.worm-score-edit'));
+      const scores = scoreRows.map(scoreRowFromUi);
+      if (JSON.stringify(scores) !== JSON.stringify(original.scores || [])) patch.scores = scores;
+
+      const visible = overlay.querySelector('#we-visible').checked;
+      if (visible !== (original.isVisible !== false)) patch.isVisible = visible;
+      const notSel = overlay.querySelector('#we-notsel').checked;
+      if (notSel !== !!original.isNotSelectable) patch.isNotSelectable = notSel;
+      const multi = overlay.querySelector('#we-multi').checked;
+      if (multi !== !!original.isSelectableMultiple) patch.isSelectableMultiple = multi;
+      if (multi) {
+        const maxP = String(parseInt(overlay.querySelector('#we-maxpicks').value, 10) || 1);
+        const minP = String(parseInt(overlay.querySelector('#we-minpicks').value, 10) || 0);
+        if (maxP !== String(original.numMultipleTimesPluss ?? '')) patch.numMultipleTimesPluss = maxP;
+        if (minP !== String(original.numMultipleTimesMinus ?? '')) patch.numMultipleTimesMinus = minP;
+      }
+
+      const actOther = overlay.querySelector('#we-actother').checked;
+      if (actOther !== !!original.activateOtherChoice) patch.activateOtherChoice = actOther;
+      const actThis = overlay.querySelector('#we-activatethis').value.trim();
+      if (actThis !== (original.activateThisChoice || '')) patch.activateThisChoice = actThis;
+      const deactOther = overlay.querySelector('#we-deactother').checked;
+      if (deactOther !== !!original.deactivateOtherChoice) patch.deactivateOtherChoice = deactOther;
+      const deactThis = overlay.querySelector('#we-deactivatethis').value.trim();
+      if (deactThis !== (original.deactivateThisChoice || '')) patch.deactivateThisChoice = deactThis;
+
+      const tpl = parseInt(overlay.querySelector('#we-template').value, 10) || 1;
+      if (tpl !== (Number(original.template) || 1)) patch.template = tpl;
+      return patch;
+    }
+
+    overlay.querySelector('#we-close').addEventListener('click', closeModal);
+    overlay.querySelector('#we-cancel').addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+    overlay.querySelectorAll('.worm-score-edit').forEach(row => wireSegmented(row.querySelector('.we-score-eff')));
+    overlay.querySelectorAll('.worm-score-remove').forEach(btn => {
+      btn.addEventListener('click', () => btn.closest('.worm-score-edit').remove());
+    });
+    overlay.querySelector('#we-add-score').addEventListener('click', () => {
+      const wrap = overlay.querySelector('#we-scores');
+      const temp = document.createElement('div');
+      temp.innerHTML = scoreRowHtml(null, -1);
+      const row = temp.firstElementChild;
+      wrap.appendChild(row);
+      wireSegmented(row.querySelector('.we-score-eff'));
+      row.querySelector('.worm-score-remove').addEventListener('click', () => row.remove());
+    });
+    overlay.querySelector('#we-multi').addEventListener('change', (e) => {
+      overlay.querySelector('#we-multi-limits').hidden = !e.target.checked;
+    });
+    overlay.querySelector('#we-reset').addEventListener('click', () => {
+      overlay.querySelector('#we-title').value = original.title || '';
+      overlay.querySelector('#we-text').value = original.text || '';
+      overlay.querySelector('#we-image').value = isEmbeddedImage ? '' : (original.image || '');
+      overlay.querySelector('#we-width').value = original.objectWidth || '';
+      const wrap = overlay.querySelector('#we-scores');
+      wrap.innerHTML = (Array.isArray(original.scores) && original.scores.length > 0)
+        ? original.scores.map((s, i) => scoreRowHtml(s, i)).join('')
+        : scoreRowHtml(null, -1);
+      wrap.querySelectorAll('.worm-score-edit').forEach(row => wireSegmented(row.querySelector('.we-score-eff')));
+      wrap.querySelectorAll('.worm-score-remove').forEach(btn => {
+        btn.addEventListener('click', () => btn.closest('.worm-score-edit').remove());
+      });
+      overlay.querySelector('#we-visible').checked = original.isVisible !== false;
+      overlay.querySelector('#we-notsel').checked = !!original.isNotSelectable;
+      overlay.querySelector('#we-multi').checked = !!original.isSelectableMultiple;
+      overlay.querySelector('#we-multi-limits').hidden = !original.isSelectableMultiple;
+      overlay.querySelector('#we-maxpicks').value = String(original.numMultipleTimesPluss ?? 1);
+      overlay.querySelector('#we-minpicks').value = String(original.numMultipleTimesMinus ?? 0);
+      overlay.querySelector('#we-activatethis').value = original.activateThisChoice || '';
+      overlay.querySelector('#we-deactivatethis').value = original.deactivateThisChoice || '';
+      overlay.querySelector('#we-actother').checked = !!original.activateOtherChoice;
+      overlay.querySelector('#we-deactother').checked = !!original.deactivateOtherChoice;
+      overlay.querySelector('#we-template').value = String(original.template ?? 1);
+    });
+    overlay.querySelector('#we-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const patch = buildPatch();
+      if (Object.keys(patch).length === 0) { closeModal(); return; }
+      await editorRequest('EDITOR_OP', { op: { type: 'updateObject', objId, patch } });
+      closeModal();
+    });
+
+    document.body.appendChild(overlay);
+  }
+
+  ensureEditorToggle();
 
   // Abbreviates a point type name: "Shard Points" → "SP", "Character Points" → "CP"
   function abbreviatePointName(name) {

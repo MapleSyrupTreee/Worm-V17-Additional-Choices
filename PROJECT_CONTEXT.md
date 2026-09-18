@@ -30,8 +30,9 @@ manifest.json        MV3 manifest: permissions storage+activeTab; host_permissio
                      background service worker; 2 content scripts (isolated + MAIN world);
                      web_accessible_resources: page-script.js
 background.js        (940 B)   Service worker: seeds storage defaults on install; answers GET_STATUS (unused — scaffolding)
-content.js           (~12 KB)  Isolated-world bridge: loads/normalizes saved choices, relays messages,
-                               "Add Choice" modal, toast (floating badge removed 2026-09-17 per user)
+content.js           (~15 KB)  Isolated-world bridge: loads/normalizes saved choices, relays messages,
+                               "Add Choice" modal, toast + interactive editor UI (selection, toolbar,
+                               edit dialog, confirm) — floating badge removed 2026-09-17 per user
 content.css          Styles for badge, modal, toast
 page-script.js       (~15 KB)  MAIN world: wraps window.fetch to intercept *project*.json (persistence on
                                reload); polls (1s x 60) to hook the Pinia "project" store; live-injects
@@ -134,6 +135,17 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
   - `4dccfec` — Baseline commit: original extension sources + this context file (2026-09-17).
 - Earlier diagnostic-round commits were squashed away by an intentional `git reset --hard` to
   the baseline; history above is authoritative.
+- Interactive editor ("Worm Forge"): plan in `tasks/plan.md`. P0 (mutation engine) + P1/P2
+  (mode, selection, edit dialog, delete/duplicate) implemented & smoke-tested live against the
+  local viewer via `.dev/serve-viewer.js` + CDP injection. Verified: toggle/Ctrl+E, click-select
+  (viewer handlers suppressed), edit dialog (all V1 fields incl. scores editor), save→remount,
+  undo/redo cycle, duplicate, delete w/ confirm, row ＋ button, custom-choice storage sync.
+  KEY selector facts (pinned live): rows `.project-row-wrapper > .project-row`; cards
+  `.project-obj` inside `.items-container > .row > .col` (width classes live on the `.col`);
+  titles `.obj-title`; viewer detail-zoom button `.obj-controls` (hidden in edit mode).
+  GOTCHA: CollectionLoader re-adds cards INCREMENTALLY after remount → reindex via debounced
+  MutationObserver, not fixed timers. GOTCHA: undo/redo stacks hold {op, inverse} pairs.
+  Remaining phases: P3 drag & drop, P4 row dialogs, P5 overlay persistence, P6 polish.
 - Version policy (user, 2026-09-17): **every commit bumps the patch** (`0.2.1`, `0.2.2`, …);
   roll the minor at feature milestones (`0.3.0` next). Keep `manifest.json`, the popup version
   pill, and this file in sync on every bump. Current: `0.2.1`.

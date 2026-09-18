@@ -668,7 +668,16 @@
     },
   };
 
+  let editorLastRemountAt = 0;
+
   function applyEditorOp(op, opts = {}) {
+    // Serialize heavy remounts: if another remount just ran, defer this op so
+    // two-step state swaps can never interleave.
+    const sinceLast = Date.now() - editorLastRemountAt;
+    if (sinceLast < 120) {
+      setTimeout(() => applyEditorOp(op, opts), 120 - sinceLast);
+      return { ok: true, label: '', queued: true };
+    }
     const ctx = getEditorCtx();
     if (!ctx) return { ok: false, error: 'CYOA is not loaded yet.' };
     const exec = EDITOR_EXEC[op.type];
@@ -683,6 +692,7 @@
     }
 
     if (result.remount && result.touched.length > 0) {
+      editorLastRemountAt = Date.now();
       const restoreMap = new Map();
       const emptiedMap = new Map();
       for (const rowId of result.touched) {
@@ -698,7 +708,7 @@
     }
 
     if (opts.record !== false) {
-      editorUndoStack.push(result.inverse);
+      editorUndoStack.push({ op, inverse: result.inverse });
       if (editorUndoStack.length > 100) editorUndoStack.shift();
       editorRedoStack.length = 0;
     }
@@ -711,6 +721,7 @@
           opType: op.type,
           label: result.label || '',
           extra: result.extra || null,
+          deletedIds: op.type === 'deleteObjects' ? (op.ids || []).slice() : [],
           snapshot: buildEditorSnapshot(),
           canUndo: editorUndoStack.length > 0,
           canRedo: editorRedoStack.length > 0,
@@ -804,23 +815,23 @@
       postEditorResult(payload && payload.reqId, res.ok, res.label, res.error);
     } else if (command === 'EDITOR_UNDO') {
       const reqId = payload && payload.reqId;
-      const inv = editorUndoStack.pop();
-      if (!inv) {
+      const entry = editorUndoStack.pop();
+      if (!entry) {
         postEditorResult(reqId, false, '', 'Nothing to undo');
       } else {
-        const res = applyEditorOp(inv, { record: false });
-        if (res.ok) { editorRedoStack.push(inv); postEditorResult(reqId, true, 'Undo'); }
-        else { editorUndoStack.push(inv); postEditorResult(reqId, false, '', res.error); }
+        const res = applyEditorOp(entry.inverse, { record: false });
+        if (res.ok) { editorRedoStack.push(entry); postEditorResult(reqId, true, 'Undo'); }
+        else { editorUndoStack.push(entry); postEditorResult(reqId, false, '', res.error); }
       }
     } else if (command === 'EDITOR_REDO') {
       const reqId = payload && payload.reqId;
-      const redoOp = editorRedoStack.pop();
-      if (!redoOp) {
+      const entry = editorRedoStack.pop();
+      if (!entry) {
         postEditorResult(reqId, false, '', 'Nothing to redo');
       } else {
-        const res = applyEditorOp(redoOp, { record: false });
-        if (res.ok) { editorUndoStack.push(redoOp); postEditorResult(reqId, true, 'Redo'); }
-        else { editorRedoStack.push(redoOp); postEditorResult(reqId, false, '', res.error); }
+        const res = applyEditorOp(entry.op, { record: false });
+        if (res.ok) { editorUndoStack.push(entry); postEditorResult(reqId, true, 'Redo'); }
+        else { editorRedoStack.push(entry); postEditorResult(reqId, false, '', res.error); }
       }
     } else if (command === 'EDITOR_GET_OBJECT') {
       const objId = payload && payload.objId;
