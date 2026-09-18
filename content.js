@@ -519,12 +519,12 @@
       // The viewer renders cards in objects-array order (v-for), so POSITION is
       // the authoritative mapping — titles are only a sanity check.
       const cards = Array.from(wrapper.querySelectorAll(EDITOR_SEL.cardGrid + ' > .col > ' + EDITOR_SEL.card));
+      if (cards.length > rowData.objects.length) {
+        console.warn('[Worm Forge] Row "' + (rowData.title || rowData.id) + '": ' + cards.length + ' cards but only ' + rowData.objects.length + ' data objects (transient remount state) — extra cards unmapped.');
+      }
       cards.forEach((card, cIdx) => {
         const obj = rowData.objects[cIdx];
-        if (!obj) {
-          console.warn('[Worm Forge] More cards than data objects in row "' + (rowData.title || rowData.id) + '" — card #' + cIdx + ' unmapped.');
-          return;
-        }
+        if (!obj) return;
         const domTitle = (card.querySelector(EDITOR_SEL.cardTitle)?.textContent || '').trim();
         if (obj.title && domTitle && obj.title !== domTitle) {
           console.warn('[Worm Forge] Title mismatch (info only) row "' + (rowData.title || rowData.id) + '": data="' + obj.title + '" dom="' + domTitle + '"');

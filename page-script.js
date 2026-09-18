@@ -210,7 +210,7 @@
   // then restore the full row copies 50ms later — the loader remounts and re-renders
   // every item. Selection state lives in the store (`selected`/`selectedIds`), so it
   // survives the remount. Row maps: rowId -> full replacement row object.
-  function swapRowsWithRemount(store, emptiedMap, restoreMap, successLog) {
+  function swapRowsWithRemount(store, emptiedMap, restoreMap, successLog, onDone) {
     const replaceRows = (stateVal, rowMap) => {
       const file = stateVal.file;
       const data = file.data;
@@ -239,6 +239,7 @@
         if (!Array.isArray(curRows)) return;
         replaceRows(cur, restoreMap);
         if (successLog) console.log(successLog);
+        if (onDone) onDone();
       } catch (err) {
         console.error('[Worm V17 Mod] Error during row remount (step 2):', err);
       }
@@ -691,6 +692,26 @@
       return { ok: false, error: err.message };
     }
 
+    const broadcast = () => {
+      try {
+        window.postMessage({
+          source: 'WORM_CYOA_PAGE_SCRIPT',
+          type: 'EDITOR_DATA_CHANGED',
+          data: {
+            opType: op.type,
+            label: result.label || '',
+            extra: result.extra || null,
+            deletedIds: op.type === 'deleteObjects' ? (op.ids || []).slice() : [],
+            snapshot: buildEditorSnapshot(),
+            canUndo: editorUndoStack.length > 0,
+            canRedo: editorRedoStack.length > 0,
+          }
+        }, '*');
+      } catch (err) {
+        console.warn('[Worm V17 Mod] Editor snapshot broadcast failed:', err);
+      }
+    };
+
     if (result.remount && result.touched.length > 0) {
       editorLastRemountAt = Date.now();
       const restoreMap = new Map();
@@ -701,34 +722,20 @@
         if (newRow) restoreMap.set(rowId, newRow);
         if (oldRow) emptiedMap.set(rowId, { ...oldRow, objects: [] });
       }
-      swapRowsWithRemount(ctx.store, emptiedMap, restoreMap, result.label || null);
+      // CRITICAL: broadcast AFTER step 2 — between the two steps the touched
+      // rows are intentionally emptied, and a snapshot taken then would tell
+      // content.js the edited row has no objects (breaking card mapping).
+      swapRowsWithRemount(ctx.store, emptiedMap, restoreMap, result.label || null, broadcast);
     } else {
       ctx.store.store = stateWithRows(ctx.stateVal, result.rows);
       if (result.label) console.log('[Worm V17 Mod] ' + result.label);
+      broadcast();
     }
 
     if (opts.record !== false) {
       editorUndoStack.push({ op, inverse: result.inverse });
       if (editorUndoStack.length > 100) editorUndoStack.shift();
       editorRedoStack.length = 0;
-    }
-
-    try {
-      window.postMessage({
-        source: 'WORM_CYOA_PAGE_SCRIPT',
-        type: 'EDITOR_DATA_CHANGED',
-        data: {
-          opType: op.type,
-          label: result.label || '',
-          extra: result.extra || null,
-          deletedIds: op.type === 'deleteObjects' ? (op.ids || []).slice() : [],
-          snapshot: buildEditorSnapshot(),
-          canUndo: editorUndoStack.length > 0,
-          canRedo: editorRedoStack.length > 0,
-        }
-      }, '*');
-    } catch (err) {
-      console.warn('[Worm V17 Mod] Editor snapshot broadcast failed:', err);
     }
 
     return { ok: true, label: result.label || '' };

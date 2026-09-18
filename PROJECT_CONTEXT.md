@@ -150,6 +150,11 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
   card→id mapping is POSITIONAL (wrapper idx + card idx → data id) because the viewer's v-for
   guarantees DOM order == objects order; titles are only sanity-checked (console warnings).
   If a click is still unmapped the handler dumps a '[Worm Forge DIAG]' object to the console.
+  ROOT CAUSE of the row-scoped dead clicks (fixed 0.2.8): EDITOR_DATA_CHANGED (with its
+  snapshot) was broadcast BETWEEN the two remount steps, so the snapshot described the edited
+  row with objects:[] — content.js then indexed the restored DOM against empty data and every
+  card in that row went unmapped (clicks fell through to the viewer). Fix: broadcast after
+  step 2 completes (swapRowsWithRemount now takes an onDone callback).
   Remaining phases: P3 drag & drop, P4 row dialogs, P5 overlay persistence, P6 polish.
 - 0.2.5 fixes (user feedback on the Meta button): Card Width now shows "(Row default)" when the
   object inherits the row width (objectWidth '' is the COMMON case — 14k of 14.3k objects) and
