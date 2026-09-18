@@ -211,6 +211,10 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
   swap must never interleave with another). Remaining P5: popup export/import v2 of overlays.
   HARNESS NOTE: use page.addInitScript (sync XHR loader @ document_start) + localStorage-backed
   chrome.storage shim — the old inject-after-load harness exercised only the racy fallback.
+  0.2.15 (user requests): Requirements = free-text id input (trim, forward-wiring-friendly,
+  titles resolved for known ids); popup Export v2 bundles customChoices + editorOverlay and
+  Import merges them back (legacy arrays still accepted) then triggers STORAGE_IMPORTED →
+  re-sync + reload; pencil glyph dropped from the Edit CYOA toggle.
 - 0.2.5 fixes (user feedback on the Meta button): Card Width now shows "(Row default)" when the
   object inherits the row width (objectWidth '' is the COMMON case — 14k of 14.3k objects) and
   never silently overwrites; phantom modifier row removed (empty scores = empty editor + hint);

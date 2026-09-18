@@ -48,19 +48,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // 3. Export & Import
+  // 3. Export & Import (choices + editor overlay: edits, moves, deletions)
   exportBtn.addEventListener('click', async () => {
-    const { customChoices = [] } = await chrome.storage.local.get('customChoices');
-    if (customChoices.length === 0) {
-      alert('No custom choices to export.');
+    const { customChoices = [], editorOverlay = null } = await chrome.storage.local.get(['customChoices', 'editorOverlay']);
+    if (customChoices.length === 0 && !editorOverlay) {
+      alert('Nothing to export yet — no custom choices and no editor edits.');
       return;
     }
 
-    const blob = new Blob([JSON.stringify(customChoices, null, 2)], { type: 'application/json' });
+    const payload = {
+      version: 2,
+      exported: Date.now(),
+      customChoices,
+      editorOverlay: (editorOverlay && editorOverlay.version === 1) ? editorOverlay : null
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `worm_v17_custom_choices_${Date.now()}.json`;
+    a.download = `worm_v17_editor_data_${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   });
@@ -75,18 +81,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
       const text = await file.text();
-      const imported = JSON.parse(text);
+      const parsed = JSON.parse(text);
 
-      if (!Array.isArray(imported)) {
-        alert('Invalid format: File must contain a JSON array of choices.');
+      // v2 export (choices + overlay) or legacy format (bare choices array)
+      let importedChoices = [];
+      let importedOverlay = null;
+      if (Array.isArray(parsed)) {
+        importedChoices = parsed;
+      } else if (parsed && typeof parsed === 'object' && parsed.version === 2) {
+        importedChoices = Array.isArray(parsed.customChoices) ? parsed.customChoices : [];
+        importedOverlay = (parsed.editorOverlay && parsed.editorOverlay.version === 1) ? parsed.editorOverlay : null;
+      } else {
+        alert('Invalid format: expected a file exported by this extension.');
         return;
       }
 
-      const { customChoices = [] } = await chrome.storage.local.get('customChoices');
+      const { customChoices = [], editorOverlay = null } = await chrome.storage.local.get(['customChoices', 'editorOverlay']);
       const existingIds = new Set(customChoices.map(c => c.id));
 
       let addedCount = 0;
-      for (const item of imported) {
+      for (const item of importedChoices) {
         if (item.title && item.rowId) {
           if (!item.id || existingIds.has(item.id)) {
             item.id = 'custom_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 5);
@@ -97,15 +111,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
 
-      await chrome.storage.local.set({ customChoices });
-      renderChoicesList(customChoices);
-
-      // Tell active tab to sync
-      if (activeTabId) {
-        chrome.tabs.sendMessage(activeTabId, { action: 'GET_PAGE_STATUS' }).catch(() => {});
+      // Merge the overlay: patches/row patches from the file win for the ids
+      // they cover, deletion sets union, existing row orders not in the file
+      // are kept.
+      let overlayMerged = false;
+      let mergedOverlay = editorOverlay || null;
+      if (importedOverlay) {
+        const base = (editorOverlay && editorOverlay.version === 1)
+          ? editorOverlay
+          : { version: 1, objects: {}, deleted: [], rowPatches: {}, rowOrder: {} };
+        mergedOverlay = {
+          version: 1,
+          objects: { ...(base.objects || {}), ...(importedOverlay.objects || {}) },
+          deleted: Array.from(new Set([...(base.deleted || []), ...(importedOverlay.deleted || [])])),
+          rowPatches: { ...(base.rowPatches || {}), ...(importedOverlay.rowPatches || {}) },
+          rowOrder: { ...(base.rowOrder || {}), ...(importedOverlay.rowOrder || {}) }
+        };
+        overlayMerged = true;
       }
 
-      alert(`Successfully imported ${addedCount} choices!`);
+      await chrome.storage.local.set({ customChoices, editorOverlay: mergedOverlay });
+      renderChoicesList(customChoices);
+
+      // Tell the CYOA tab to re-sync storage and reload so the overlay is
+      // applied cleanly by the fetch interceptor.
+      if (activeTabId) {
+        try { await chrome.tabs.sendMessage(activeTabId, { action: 'STORAGE_IMPORTED' }); } catch (err) { /* page may not be open */ }
+      }
+
+      alert(`Imported ${addedCount} choice(s)` + (overlayMerged ? ' and merged editor edits. The CYOA page will reload to apply them.' : '') + '!');
     } catch (err) {
       alert('Error parsing JSON file: ' + err.message);
     } finally {

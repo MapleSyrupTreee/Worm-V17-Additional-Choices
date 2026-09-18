@@ -145,6 +145,22 @@
       }, '*');
       sendResponse({ status: 'ok' });
       return true;
+    } else if (message.action === 'STORAGE_IMPORTED') {
+      // Popup imported choices/overlay into storage: re-sync to page-script and
+      // reload so the fetch interceptor applies everything cleanly.
+      (async () => {
+        try {
+          const { customChoices = [], editorOverlay = null } = await chrome.storage.local.get(['customChoices', 'editorOverlay']);
+          window.postMessage({ target: 'WORM_CYOA_PAGE_SCRIPT', command: 'SYNC_CUSTOM_CHOICES', payload: customChoices }, '*');
+          window.postMessage({ target: 'WORM_CYOA_PAGE_SCRIPT', command: 'SYNC_EDITOR_OVERLAY', payload: editorOverlay }, '*');
+          showToast('Imported — reloading…');
+          setTimeout(() => window.location.reload(), 700);
+        } catch (err) {
+          showToast('Import sync failed: ' + (err && err.message ? err.message : err));
+        }
+      })();
+      sendResponse({ status: 'ok' });
+      return true;
     } else if (message.action === 'DISCARD_ALL_EDITS') {
       // Safety hatch: wipe the overlay + custom choices, then reload so the
       // page comes back pristine from the original project.json.
@@ -285,7 +301,7 @@
     btn.id = 'worm-edit-toggle';
     btn.className = 'worm-editor-ui';
     btn.type = 'button';
-    btn.textContent = '✎ Edit CYOA';
+    btn.textContent = 'Edit CYOA';
     btn.title = 'Toggle the interactive editor (Ctrl+E)';
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -318,7 +334,7 @@
     document.body.classList.toggle('worm-edit-mode', enabled);
     if (EDITOR_UI.toggleBtn) {
       EDITOR_UI.toggleBtn.classList.toggle('active', enabled);
-      EDITOR_UI.toggleBtn.textContent = enabled ? '✓ Done Editing' : '✎ Edit CYOA';
+      EDITOR_UI.toggleBtn.textContent = enabled ? '✓ Done Editing' : 'Edit CYOA';
     }
     if (enabled) {
       if (data && data.snapshot) EDITOR_UI.data = data.snapshot;
@@ -1213,7 +1229,7 @@
                   <option value="required">Needs a choice</option>
                   <option value="incompatible">Blocked by a choice</option>
                 </select>
-                <select id="we-req-choice" class="worm-form-select"></select>
+                <input type="text" id="we-req-choice" class="worm-form-input" placeholder="choice id" autocomplete="off" spellcheck="false">
                 <button type="button" id="we-req-add" class="worm-btn-ghost-sm">Add</button>
               </div>
             </div>
@@ -1280,13 +1296,13 @@
     overlay.querySelector('#we-req-add').addEventListener('click', () => {
       const kindSel = overlay.querySelector('#we-req-kind');
       const choiceSel = overlay.querySelector('#we-req-choice');
-      const reqId = choiceSel.value;
+      const reqId = choiceSel.value.trim();
       if (!reqId || reqState.some(e => e.term.reqId === reqId)) return;
       reqState.push({ term: buildRequirementTerm(kindSel.value === 'required'), required: kindSel.value === 'required' });
       const term = reqState[reqState.length - 1].term;
       term.reqId = reqId;
+      choiceSel.value = '';
       renderReqRows();
-      renderReqChoiceSelect();
     });
 
     function closeModal() { overlay.remove(); }
@@ -1488,18 +1504,6 @@
       });
     }
 
-    function renderReqChoiceSelect() {
-      const sel = overlay.querySelector('#we-req-choice');
-      if (!sel) return;
-      const used = new Set(reqState.map(e => e.term.reqId));
-      const options = allRowsList
-        .flatMap(r => (r.objects || []))
-        .filter(o => o.id && !used.has(o.id))
-        .map(o => `<option value="${esc(o.id)}">${esc((o.title || o.id) + ' · ' + o.id)}</option>`)
-        .join('');
-      sel.innerHTML = options || '<option value="">No other choices available</option>';
-    }
-
     function buildRequirementTerm(required) {
       // Mirrors the project's real choice-level {type:'id'} ConditionTerm shape
       // (verified against project.json data): showRequired=true + beforeText
@@ -1616,7 +1620,6 @@
       renderActRowSelect();
     }
     renderReqRows();
-    renderReqChoiceSelect();
     updateScoreHint();
     overlay.querySelector('#we-reset').addEventListener('click', () => {
       overlay.querySelector('#we-title').value = original.title || '';

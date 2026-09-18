@@ -172,6 +172,15 @@ and is persisted as a lightweight overlay so edits survive page reloads via the 
   swapRowsWithRemount callers are now serialized inside the function. HARNESS: use
   page.addInitScript (sync XHR loader @ document_start) + localStorage-backed shim — the old
   inject-after-load harness exercised only the racy fallback path.
+- **0.2.15 (user requests)**: (1) Requirements picker is now a free-text id input (trims
+  whitespace; accepts ids not currently in the data for forward wiring; known ids still
+  display their title in the rows list). (2) Popup Export v2 — `{ version: 2, exported,
+  customChoices, editorOverlay }` — includes ALL editor edits/moves/deletes; Import accepts
+  v2 files AND legacy bare-choices arrays, merges the overlay (patches from file win per id,
+  deletion sets union, file rowOrder overrides per row, unlisted rows keep theirs), then
+  signals `STORAGE_IMPORTED` → content.js re-syncs page-script and reloads so the fetch
+  interceptor applies everything. (3) Pencil glyph removed from the "Edit CYOA" toggle
+  (still "✓ Done Editing" when active).
 - Testing harness notes: see PROJECT_CONTEXT §11.
 - **0.2.10 polish (user request)**: edit mode shows each choice's data id as a click-to-copy
   badge at the card's top-right (`.worm-obj-id-badge`, created on every index pass, removed on
