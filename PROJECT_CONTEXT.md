@@ -155,6 +155,9 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
   row with objects:[] — content.js then indexed the restored DOM against empty data and every
   card in that row went unmapped (clicks fell through to the viewer). Fix: broadcast after
   step 2 completes (swapRowsWithRemount now takes an onDone callback).
+  USER-VERIFIED (0.2.9): all of the above confirmed working by the user (dialog fixes, Section
+  Activation, row-scoped clicks, add-wipe). P0-P2 COMPLETE; remaining: P3 drag & drop, P4 row
+  dialogs, P5 overlay persistence, P6 polish (target 0.3.0).
   Remaining phases: P3 drag & drop, P4 row dialogs, P5 overlay persistence, P6 polish.
 - 0.2.5 fixes (user feedback on the Meta button): Card Width now shows "(Row default)" when the
   object inherits the row width (objectWidth '' is the COMMON case — 14k of 14.3k objects) and
@@ -227,6 +230,18 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
 - Do not rewrite files via PowerShell `Set-Content` — it introduced a UTF-8 BOM and mojibake
   here once; use the editor tool (preserves encoding) instead.
 - `project.json` in the viewer folder is ~38 MB — never read whole; search it with targeted patterns.
+- CDP harness (`.dev/serve-viewer.js`, port 8123: `/viewer/` + `/ext/`) is useful but fragile:
+  page JS froze 3× during rapid automated ops (engine-only stress stayed stable). Mirror test
+  steps to disk via `fetch('/__log?m=…')` POST (appends to `.dev/wormlog.txt`) — survives wedges.
+  Synthetic (untrusted) clicks do NOT trigger the viewer's Vue handlers reliably — use the MCP
+  real-click tool via take_snapshot uids. Condition-gated rows have NO cards in the DOM until
+  their gating choice is picked (CollectionLoader `v-if="isVisible"`) — pick the gating button
+  first when reproducing anything in those rows.
+- ICC Neo source is public: `github.com/ltouroumov/cyoa-editor` (Nuxt 4 + TS; AGPL-3.0). V1
+  schema: `app/composables/project/types/v1/index.ts`; viewer store:
+  `app/composables/store/project.ts`; sizes: `app/components/viewer/style/sizes.ts`
+  (empty obj.objectWidth = inherit row.objectWidth); conditions:
+  `app/composables/conditions.ts` (row gated by {type:'id', required, reqId}).
 - Console prefixes: `[Worm V17 Mod]` (all scripts), `[Worm V17 Mod DIAG…]` (removed in the
   current tree after the reset-to-baseline; re-add if needed).
 

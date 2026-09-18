@@ -137,3 +137,19 @@ and is persisted as a lightweight overlay so edits survive page reloads via the 
 ## Verification
 - Every task ends with `node --check` on touched JS + a manual reload checklist step.
 - Phase checkpoints require the user's visual confirmation in the live viewer before proceeding.
+
+---
+
+## STATUS (updated 2026-09-17, v0.2.9)
+- **P0–P2 COMPLETE + USER-VERIFIED**: mutation engine, editor mode, click selection (positional
+  mapping + click-time self-heal), edit dialog (full V1 fields incl. multi-score editor,
+  Section Activation add/remove via row conditions), duplicate, delete w/ confirm, row ＋,
+  undo/redo ({op, inverse} pairs), row-default width handling, no phantom modifiers,
+  post-step-2 snapshot broadcast (root cause of row-scoped dead clicks AND the add-wipe).
+- Commits: `434bda8` (P0 engine) → `bf1f39b` (P1/P2 editor) → `6868fd1` (toolbar
+  pointer-events, user-reported) → `8fce187` + `b898be3` (positional mapping + click
+  self-heal, user-reported) → `ec9c720` (post-step-2 broadcast, user-reported) → `620ea65`
+  (0.2.5 dialog fixes, user-reported) → `620ea65..ec9c720` verified by user.
+- **REMAINING**: P3 drag & drop, P4 row dialogs (edit/delete/move/re-add rows), P5 overlay
+  persistence + popup export/import integration, P6 polish → target minor bump 0.3.0.
+- Testing harness notes: see PROJECT_CONTEXT §11.
