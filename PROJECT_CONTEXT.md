@@ -176,6 +176,12 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
   Verified in harness: add w/ requirement+gain-2 modifier on visible row (card + badge + text
   render), requirement round-trips, undo removes choice + purges storage; hidden-row state after
   add is the viewer's own section-reveal gating (row 91nq has NO requireds) — not a regression.
+  0.2.12 fix: the v0.2.11 line-splice used PowerShell Get-Content/Set-Content, which re-read the
+  file as cp1252 and re-encoded — double-encoding every pre-existing non-ASCII char (＋ ✎ ⧉ 🗑 ×
+  “ ” — − … · became mojibake; user-reported as "garbled text instead of the icons"). Reversed
+  with .dev/fix-mojibake.js (strict per-run cp1252→UTF-8 map-back, 41 replacements in content.js
+  only — every other file verified clean). LESSON: never round-trip source files through
+  PowerShell text cmdlets; use the editor tool. .dev/check-glyphs.js asserts all glyphs.
   Remaining phases: P3 drag & drop, P4 row dialogs, P5 overlay persistence, P6 polish.
 - 0.2.5 fixes (user feedback on the Meta button): Card Width now shows "(Row default)" when the
   object inherits the row width (objectWidth '' is the COMMON case — 14k of 14.3k objects) and

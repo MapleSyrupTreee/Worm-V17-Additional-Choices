@@ -1,4 +1,4 @@
-﻿// content.js - Isolated content script bridge & UI injection
+// content.js - Isolated content script bridge & UI injection
 
 (function () {
   console.log('[Worm V17 Mod] Content script loaded on:', window.location.href);
@@ -185,7 +185,7 @@
 
   // =========================================================================
   // 7. Interactive Editor ("Worm Forge")
-  //    Toggle button â†’ edit mode over the live viewer. Cards are matched to
+  //    Toggle button → edit mode over the live viewer. Cards are matched to
   //    store objects by unique title with an order-based fallback; the mapping
   //    lives here in the isolated world and is rebuilt after every mutation
   //    broadcast. Selection chrome is plain DOM + fixed layers.
@@ -259,7 +259,7 @@
     btn.id = 'worm-edit-toggle';
     btn.className = 'worm-editor-ui';
     btn.type = 'button';
-    btn.textContent = 'âœŽ Edit CYOA';
+    btn.textContent = '✎ Edit CYOA';
     btn.title = 'Toggle the interactive editor (Ctrl+E)';
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -292,12 +292,12 @@
     document.body.classList.toggle('worm-edit-mode', enabled);
     if (EDITOR_UI.toggleBtn) {
       EDITOR_UI.toggleBtn.classList.toggle('active', enabled);
-      EDITOR_UI.toggleBtn.textContent = enabled ? 'âœ“ Done Editing' : 'âœŽ Edit CYOA';
+      EDITOR_UI.toggleBtn.textContent = enabled ? '✓ Done Editing' : '✎ Edit CYOA';
     }
     if (enabled) {
       if (data && data.snapshot) EDITOR_UI.data = data.snapshot;
       editorEnter();
-      showToast('Editor on â€” click a choice to select it. Ctrl+E to exit.');
+      showToast('Editor on — click a choice to select it. Ctrl+E to exit.');
     } else {
       editorExit();
     }
@@ -378,10 +378,10 @@
       const rowData = EDITOR_UI.data.rows[wIdx];
       if (!rowData) return;
       // The viewer renders cards in objects-array order (v-for), so POSITION is
-      // the authoritative mapping â€” titles are only a sanity check.
+      // the authoritative mapping — titles are only a sanity check.
       const cards = Array.from(wrapper.querySelectorAll(EDITOR_SEL.cardGrid + ' > .col > ' + EDITOR_SEL.card));
       if (cards.length > rowData.objects.length) {
-        console.warn('[Worm Forge] Row "' + (rowData.title || rowData.id) + '": ' + cards.length + ' cards but only ' + rowData.objects.length + ' data objects (transient remount state) â€” extra cards unmapped.');
+        console.warn('[Worm Forge] Row "' + (rowData.title || rowData.id) + '": ' + cards.length + ' cards but only ' + rowData.objects.length + ' data objects (transient remount state) — extra cards unmapped.');
       }
       cards.forEach((card, cIdx) => {
         const obj = rowData.objects[cIdx];
@@ -442,7 +442,7 @@
         e.stopPropagation();
         const id = badge.dataset.objId || '';
         const ok = await editorCopyText(id);
-        showToast(ok ? 'Choice ID copied: ' + id : 'Copy failed â€” ID: ' + id);
+        showToast(ok ? 'Choice ID copied: ' + id : 'Copy failed — ID: ' + id);
       });
       card.appendChild(badge);
       if (getComputedStyle(card).position === 'static') {
@@ -452,8 +452,8 @@
     }
     if (badge.dataset.objId !== objId) {
       badge.dataset.objId = objId;
-      badge.textContent = objId.length > 22 ? objId.slice(0, 20) + 'â€¦' : objId;
-      badge.title = 'Choice ID â€” click to copy: ' + objId;
+      badge.textContent = objId.length > 22 ? objId.slice(0, 20) + '…' : objId;
+      badge.title = 'Choice ID — click to copy: ' + objId;
     }
   }
 
@@ -479,9 +479,9 @@
     toolbar.className = 'worm-sel-toolbar';
     toolbar.style.display = 'none';
     toolbar.innerHTML = `
-      <button type="button" data-act="edit" title="Edit this choice">âœŽ Edit</button>
-      <button type="button" data-act="duplicate" title="Duplicate this choice">â§‰</button>
-      <button type="button" data-act="delete" title="Delete this choice (Del)">ðŸ—‘</button>`;
+      <button type="button" data-act="edit" title="Edit this choice">✎ Edit</button>
+      <button type="button" data-act="duplicate" title="Duplicate this choice">⧉</button>
+      <button type="button" data-act="delete" title="Delete this choice (Del)">🗑</button>`;
     toolbar.addEventListener('click', (e) => {
       e.stopPropagation();
       const act = e.target && e.target.dataset ? e.target.dataset.act : null;
@@ -563,7 +563,7 @@
       bar.className = 'worm-row-bar worm-editor-ui';
       const addBtn = document.createElement('button');
       addBtn.type = 'button';
-      addBtn.textContent = 'ï¼‹';
+      addBtn.textContent = '＋';
       addBtn.title = 'Add a choice to this row';
       addBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -620,7 +620,7 @@
     if (cardEl) {
       let objId = editorObjIdForElement(cardEl);
       if (!objId) {
-        // The card was re-created by a remount after our last reindex â€”
+        // The card was re-created by a remount after our last reindex —
         // rebuild the index on the spot and retry the lookup.
         editorIndexCards();
         objId = editorObjIdForElement(cardEl);
@@ -719,8 +719,8 @@
     });
   }
 
-  // Shared choice dialog â€” used for BOTH "Edit Choice" (editor toolbar) and
-  // "Add Choice" (row ï¼‹ button). Field parity is intentional: add simply starts
+  // Shared choice dialog — used for BOTH "Edit Choice" (editor toolbar) and
+  // "Add Choice" (row ＋ button). Field parity is intentional: add simply starts
   // from a blank object and adds a Destination selector; edit additionally shows
   // the Section Activation editor (needs the choice's id to exist first).
   async function openChoiceModal(opts) {
@@ -729,7 +729,7 @@
     let resp = null;
     let obj;
     if (isAdd) {
-      if (!EDITOR_UI.data) { showToast('Editor data not ready â€” reopen the editor.'); return; }
+      if (!EDITOR_UI.data) { showToast('Editor data not ready — reopen the editor.'); return; }
       obj = {
         title: '', text: '', image: '', objectWidth: '',
         scores: [], requireds: [],
@@ -779,11 +779,11 @@
         <div class="worm-score-edit" data-orig="${origIdx}">
           <select class="worm-form-select we-score-type">${ptOptions}</select>
           <div class="worm-segmented worm-seg-sm we-score-eff" role="group" aria-label="Effect">
-            <button type="button" class="worm-seg-btn${eff === 'cost' ? ' is-active' : ''}" data-eff="cost">âˆ’</button>
+            <button type="button" class="worm-seg-btn${eff === 'cost' ? ' is-active' : ''}" data-eff="cost">−</button>
             <button type="button" class="worm-seg-btn${eff === 'gain' ? ' is-active' : ''}" data-eff="gain">+</button>
           </div>
           <input type="number" class="worm-form-input we-score-amt" min="0" value="${amt}">
-          <button type="button" class="worm-score-remove" title="Remove modifier">Ã—</button>
+          <button type="button" class="worm-score-remove" title="Remove modifier">×</button>
         </div>`;
     };
     const scoreRowsHtml = (Array.isArray(original.scores) && original.scores.length > 0)
@@ -791,8 +791,8 @@
       : '';
 
     // Section activation state (edit mode only): rows whose visibility
-    // conditions reference this choice ({type:'id', reqId}). required=true â†’
-    // row shows when this choice is picked; required=false â†’ row hides.
+    // conditions reference this choice ({type:'id', reqId}). required=true →
+    // row shows when this choice is picked; required=false → row hides.
     const actState = isAdd ? [] : (resp.activatedRows || []).map(a => {
       const requireds = a.requireds || [];
       let origIdx = -1;
@@ -822,7 +822,7 @@
     }
 
     // Non-id terms of the original requireds (points/multi conditions the UI
-    // doesn't model) â€” preserved verbatim by both save paths.
+    // doesn't model) — preserved verbatim by both save paths.
     function keptOthersForAdd() {
       return originalRequireds.filter(t => !(t && t.type === 'id')).map(t => JSON.parse(JSON.stringify(t)));
     }
@@ -832,7 +832,7 @@
     overlay.innerHTML = `
       <div id="worm-modal-dialog">
         <div class="worm-modal-header">
-          <h3><span class="worm-modal-glyph">âœŽ</span> ${isAdd ? 'Add Choice' : 'Edit Choice'} ${!isAdd ? `<span class="worm-id-chip" id="we-obj-id" title="Choice ID â€” click to copy">${esc(objId)}</span>` : ''}</h3>
+          <h3><span class="worm-modal-glyph">✎</span> ${isAdd ? 'Add Choice' : 'Edit Choice'} ${!isAdd ? `<span class="worm-id-chip" id="we-obj-id" title="Choice ID — click to copy">${esc(objId)}</span>` : ''}</h3>
           <button type="button" class="worm-modal-close-btn" id="we-close" title="Close">&times;</button>
         </div>
         <form id="we-form">
@@ -866,7 +866,7 @@
             <div class="worm-form-group">
               <label>Point Modifiers</label>
               <div id="we-scores">${scoreRowsHtml}</div>
-              <div class="worm-empty-hint" id="we-scores-hint"${scoreRowsHtml ? ' hidden' : ''}>No point modifiers on this choice â€” use â€œ+ Add Modifierâ€.</div>
+              <div class="worm-empty-hint" id="we-scores-hint"${scoreRowsHtml ? ' hidden' : ''}>No point modifiers on this choice — use “+ Add Modifier”.</div>
               <button type="button" id="we-add-score" class="worm-btn-ghost-sm worm-mt8">+ Add Modifier</button>
             </div>
             <div class="worm-form-group">
@@ -913,11 +913,11 @@
               <div class="worm-form-grid2 worm-mt8">
                 <div class="worm-form-group">
                   <label for="we-activatethis">Activates choice ids (comma-separated)</label>
-                  <input type="text" id="we-activatethis" class="worm-form-input" value="${esc(original.activateThisChoice || '')}" placeholder="id1,id2,â€¦">
+                  <input type="text" id="we-activatethis" class="worm-form-input" value="${esc(original.activateThisChoice || '')}" placeholder="id1,id2,…">
                 </div>
                 <div class="worm-form-group">
                   <label for="we-deactivatethis">Deactivates choice ids (comma-separated)</label>
-                  <input type="text" id="we-deactivatethis" class="worm-form-input" value="${esc(original.deactivateThisChoice || '')}" placeholder="id1,id2,â€¦">
+                  <input type="text" id="we-deactivatethis" class="worm-form-input" value="${esc(original.deactivateThisChoice || '')}" placeholder="id1,id2,…">
                 </div>
               </div>
               <div class="worm-check-grid worm-mt8">
@@ -938,7 +938,7 @@
     const idChip = overlay.querySelector('#we-obj-id');
     if (idChip) idChip.addEventListener('click', async () => {
       const ok = await editorCopyText(objId);
-      showToast(ok ? 'Choice ID copied: ' + objId : 'Copy failed â€” ID: ' + objId);
+      showToast(ok ? 'Choice ID copied: ' + objId : 'Copy failed — ID: ' + objId);
     });
 
     overlay.querySelector('#we-req-add').addEventListener('click', () => {
@@ -972,7 +972,7 @@
       const amt = Math.abs(parseInt(row.querySelector('.we-score-amt').value, 10)) || 0;
       const pt = pointTypes.find(p => p.id === ptId);
       const abbr = abbreviatePointName(pt ? (pt.name || pt.id) : 'Points');
-      // Preserve unknown/original fields (type, showScore, â€¦) and overlay only
+      // Preserve unknown/original fields (type, showScore, …) and overlay only
       // the UI-editable ones.
       return {
         ...origScore,
@@ -1086,7 +1086,7 @@
         rm.type = 'button';
         rm.className = 'worm-act-remove';
         rm.title = 'Remove this condition';
-        rm.textContent = 'Ã—';
+        rm.textContent = '×';
         rm.addEventListener('click', () => {
           const i = actState.indexOf(a);
           if (i >= 0) {
@@ -1140,7 +1140,7 @@
         rm.type = 'button';
         rm.className = 'worm-act-remove';
         rm.title = 'Remove this requirement';
-        rm.textContent = 'Ã—';
+        rm.textContent = '×';
         rm.addEventListener('click', () => {
           reqState.splice(idx, 1);
           renderReqRows();
@@ -1159,7 +1159,7 @@
       const options = allRowsList
         .flatMap(r => (r.objects || []))
         .filter(o => o.id && !used.has(o.id))
-        .map(o => `<option value="${esc(o.id)}">${esc((o.title || o.id) + ' Â· ' + o.id)}</option>`)
+        .map(o => `<option value="${esc(o.id)}">${esc((o.title || o.id) + ' · ' + o.id)}</option>`)
         .join('');
       sel.innerHTML = options || '<option value="">No other choices available</option>';
     }
@@ -1203,7 +1203,7 @@
         }
         return rowMap.get(rowId);
       };
-      // Removals first, then (re-)additions â€” so a remove+re-add of the same
+      // Removals first, then (re-)additions — so a remove+re-add of the same
       // row nets out to a single present term.
       for (const r of removedActs) {
         const entry = ensure(r.rowId, r.requireds);
@@ -1213,7 +1213,7 @@
         const entry = ensure(a.rowId, a.requireds);
         const idx = entry.requireds.findIndex(t => t && t.type === 'id' && t.reqId === objId);
         if (idx >= 0) {
-          // Already gated by this choice â€” only the required flag can differ;
+          // Already gated by this choice — only the required flag can differ;
           // touch nothing else so unchanged rows produce no op.
           if (!!entry.requireds[idx].required !== !!a.required) {
             entry.requireds[idx] = { ...entry.requireds[idx], required: !!a.required };
@@ -1347,7 +1347,7 @@
         await editorRequest('EDITOR_OP', {
           op: { type: 'addObject', rowId, index: -1, object: newChoice },
         });
-        showToast('Added â€œ' + title + 'â€');
+        showToast('Added “' + title + '”');
         return;
       }
       // ---- Edit path (unchanged semantics) ----
@@ -1367,7 +1367,7 @@
 
   ensureEditorToggle();
 
-  // Abbreviates a point type name: "Shard Points" â†’ "SP", "Character Points" â†’ "CP"
+  // Abbreviates a point type name: "Shard Points" → "SP", "Character Points" → "CP"
   function abbreviatePointName(name) {
     if (!name) return 'Pts';
     const words = name.trim().split(/\s+/);
