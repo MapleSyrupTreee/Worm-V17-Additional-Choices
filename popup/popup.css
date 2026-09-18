@@ -1,0 +1,267 @@
+:root {
+  --bg-primary: #120e1e;
+  --bg-secondary: #1e1830;
+  --bg-card: #27203d;
+  --accent: #7c4dff;
+  --accent-light: #9d4edd;
+  --text-main: #f8f7fa;
+  --text-muted: #b3acc4;
+  --border: #3b3258;
+  --success: #00e676;
+  --warning: #ffb74d;
+  --danger: #ff5252;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  width: 340px;
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  padding: 14px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.logo-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+
+h1 {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.subtitle {
+  font-size: 11px;
+  color: #c77dff;
+}
+
+.version-badge {
+  font-size: 10px;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  padding: 2px 6px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.card-header-flex {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.card h2 {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #d1b3ff;
+}
+
+.io-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.link-btn {
+  background: transparent;
+  border: none;
+  color: #c77dff;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.link-btn:hover {
+  color: #ffffff;
+}
+
+.status-card {
+  border-left: 3px solid var(--accent);
+}
+
+.status-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.status-indicator {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--warning);
+}
+
+.status-indicator.active {
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+}
+
+.status-indicator.inactive {
+  background: var(--danger);
+}
+
+.cyoa-details {
+  display: flex;
+  justify-content: space-between;
+  background: var(--bg-card);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.detail-item span {
+  color: var(--text-muted);
+  display: block;
+}
+
+.detail-item strong {
+  color: var(--text-main);
+  font-size: 12px;
+}
+
+.primary-btn {
+  width: 100%;
+  padding: 9px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.primary-btn:hover {
+  background: var(--accent-light);
+  box-shadow: 0 2px 8px rgba(124, 77, 255, 0.4);
+}
+
+.choices-list {
+  max-height: 150px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.empty-state {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 10px 0;
+  font-style: italic;
+}
+
+.choice-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.choice-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.choice-title {
+  font-weight: 600;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 210px;
+}
+
+.choice-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.choice-del-btn {
+  background: transparent;
+  border: none;
+  color: var(--danger);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.choice-del-btn:hover {
+  background: rgba(255, 82, 82, 0.15);
+}
+
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.toggle-row input {
+  cursor: pointer;
+}
+
+.footer {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+.footer code {
+  color: #c77dff;
+}

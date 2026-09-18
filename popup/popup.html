@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Worm V17 Additional Choices</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="header">
+    <div class="logo-title">
+      <img src="../icons/icon-48.png" alt="Logo" class="logo">
+      <div>
+        <h1>Worm V17 CYOA</h1>
+        <p class="subtitle">Additional Choices Mod</p>
+      </div>
+    </div>
+    <span class="version-badge">v0.1.0</span>
+  </div>
+
+  <!-- Status Card -->
+  <div class="card status-card">
+    <div class="status-header">
+      <span class="status-indicator" id="statusIndicator"></span>
+      <span class="status-label" id="statusText">Checking CYOA tab...</span>
+    </div>
+    <div class="cyoa-details" id="cyoaDetails">
+      <div class="detail-item">
+        <span>Categories:</span>
+        <strong id="groupCount">-</strong>
+      </div>
+      <div class="detail-item">
+        <span>Point Currencies:</span>
+        <strong id="pointCount">-</strong>
+      </div>
+    </div>
+  </div>
+
+  <!-- Action Card -->
+  <div class="card">
+    <button id="openInPageModalBtn" class="primary-btn">✦ Add Choice (In-Page)</button>
+  </div>
+
+  <!-- Custom Choices Manager -->
+  <div class="card">
+    <div class="card-header-flex">
+      <h2>Custom Choices (<span id="customChoicesCount">0</span>)</h2>
+      <div class="io-actions">
+        <button id="exportBtn" class="link-btn" title="Export as JSON">Export</button>
+        <button id="importBtn" class="link-btn" title="Import from JSON">Import</button>
+        <input type="file" id="importFileInput" accept=".json" style="display: none;" />
+      </div>
+    </div>
+    <div id="choicesList" class="choices-list">
+      <div class="empty-state">No custom choices added yet. Click above to create one!</div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="card settings-card">
+    <h2>Settings</h2>
+    <label class="toggle-row">
+      <span>Enable Extension</span>
+      <input type="checkbox" id="toggleEnabled" checked>
+      <span class="slider"></span>
+    </label>
+    <label class="toggle-row">
+      <span>Show On-Page Floating Badge</span>
+      <input type="checkbox" id="toggleBadge" checked>
+      <span class="slider"></span>
+    </label>
+  </div>
+
+  <div class="footer">
+    <p>Target: <code>ltouroumov.ch</code> & <code>cyoa-editor</code></p>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
