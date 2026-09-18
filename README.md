@@ -11,8 +11,8 @@ Supported Sites:
 
 ## 🚀 Features
 
-- **Global In-Page "+ Add Choice" Button & Modal**:
-  - Click the floating badge in the bottom-right corner of the CYOA page to open the creation dialog.
+- **In-Page "Add Choice" Modal**:
+  - Open it from the extension popup's **Add Choice** button (opens the dialog on the active CYOA tab).
   - Category dropdown is dynamically populated with all actual sections in the CYOA (Origins, Perks, Tier 1-3 Powers, Drawbacks, etc.).
   - Select point type (CP, SP, etc.) and specify point cost/gain.
   - Supports custom descriptions and optional image URLs.
@@ -24,9 +24,8 @@ Supported Sites:
   - **Export to JSON**: Download your custom choices to share or backup.
   - **Import from JSON**: Easily load custom choices from JSON files.
 - **Extension Popup Dashboard**:
-  - Shows connected CYOA status, total detected categories, and point currencies.
-  - Displays all created custom choices with one-click deletion.
-  - Toggle extension features or the on-page floating badge on/off.
+  - Connection status dot in the header (hover for details).
+  - Displays all created custom choices with one-click deletion (removed from the live page instantly).
 
 ---
 
@@ -44,8 +43,7 @@ Supported Sites:
    - Go to `https://cyoa.ltouroumov.ch/viewer/` or `https://ltouroumov.github.io/cyoa-editor/`.
    - Refresh the page to initialize the scripts.
 4. **Add a Custom Choice**:
-   - Look at the bottom-right corner for the **"Worm CYOA Mod"** badge.
-   - Click **"+ Add Choice"**.
+   - Click the extension icon and press **Add Choice** (opens the dialog on the CYOA tab).
    - Pick your desired category (e.g., *Perks* or *Powers*), enter a Title, Description, and Points.
    - Click **"Add to CYOA"**.
    - The choice will appear in that section of the CYOA and can be selected just like any native option!

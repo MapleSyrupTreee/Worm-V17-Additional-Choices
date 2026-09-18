@@ -30,8 +30,8 @@ manifest.json        MV3 manifest: permissions storage+activeTab; host_permissio
                      background service worker; 2 content scripts (isolated + MAIN world);
                      web_accessible_resources: page-script.js
 background.js        (940 B)   Service worker: seeds storage defaults on install; answers GET_STATUS (unused — scaffolding)
-content.js           (12.4 KB) Isolated-world bridge: loads/normalizes saved choices, relays messages,
-                               renders floating badge (never invoked — see bugs), "Add Choice" modal, toast
+content.js           (~12 KB)  Isolated-world bridge: loads/normalizes saved choices, relays messages,
+                               "Add Choice" modal, toast (floating badge removed 2026-09-17 per user)
 content.css          Styles for badge, modal, toast
 page-script.js       (~15 KB)  MAIN world: wraps window.fetch to intercept *project*.json (persistence on
                                reload); polls (1s x 60) to hook the Pinia "project" store; live-injects
@@ -136,21 +136,19 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
 **FIXED (verified by user):**
 - ~~Live injection requiring page refresh~~ — now works via the Pinia `project` store
   (see section 4a). Persistence on reload still goes through the fetch interceptor.
+- ~~Floating badge~~ — removed entirely (user request, 2026-09-17): `showFloatingBadge()` and all
+  badge CSS deleted; it was never invoked and the user didn't want it. README updated.
 
 **Still open (confirmed from code):**
-1. **Settings UI removed (2026-09-17)** — `settings.enabled` was dead (nothing read it) and the
-   badge toggle controlled `showIndicator`, read only by the never-invoked `showFloatingBadge()`.
-   The popup no longer writes `settings`; `content.js#showFloatingBadge` remains as dead code.
-2. **Floating badge never appears** — `showFloatingBadge()` (content.js) defined but its only call site is commented out. README claims this feature works.
-3. **JSON Import doesn't live-inject** — popup only re-pings `GET_PAGE_STATUS`; no re-sync command sent.
-4. **Over-broad permissions** — `<all_urls>` content scripts/host permissions vs. two known target sites.
-5. **`postMessage(..., '*')` everywhere** — no origin restriction.
-6. **Duplicated helpers** — `abbreviatePointName`, score normalization, `escapeHtml` across content.js / page-script.js / popup.js.
-7. **Hook give-up is silent-ish** — hook interval stops after 60 attempts with only a warning in DIAG builds; baseline has no warning.
-8. **Live injection visual flash** — the two-step remount briefly (~50ms) blanks the target row; cosmetic (applies to removal too).
-9. **background.js `GET_STATUS` handler** — unused scaffolding *(inference)*.
-10. **Vue 2 fallback is dead code** on current ICC Neo builds (kept intentionally for legacy ICC).
-11. No tests or linting.
+1. **JSON Import doesn't live-inject** — popup only re-pings `GET_PAGE_STATUS`; no re-sync command sent.
+2. **Over-broad permissions** — `<all_urls>` content scripts/host permissions vs. two known target sites.
+3. **`postMessage(..., '*')` everywhere** — no origin restriction.
+4. **Duplicated helpers** — `abbreviatePointName`, score normalization, `escapeHtml` across content.js / page-script.js / popup.js.
+5. **Hook give-up is silent-ish** — hook interval stops after 60 attempts with only a warning in DIAG builds; baseline has no warning.
+6. **Live injection visual flash** — the two-step remount briefly (~50ms) blanks the target row; cosmetic (applies to removal too).
+7. **background.js `GET_STATUS` handler** — unused scaffolding *(inference)*.
+8. **Vue 2 fallback is dead code** on current ICC Neo builds (kept intentionally for legacy ICC).
+9. No tests or linting.
 
 **FIXED (implemented, pending user retest):**
 - ~~Popup Delete doesn't remove from live page~~ — `CHOICE_DELETED` (popup → content) is relayed
@@ -170,7 +168,7 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
 1. ~~Initialize git + baseline commit.~~ ✅ Done (`4dccfec`).
 2. ~~Fix live injection without page refresh.~~ ✅ Done & user-verified (`d5d40dc` + `722c49f`).
 3. ~~Popup delete updates the live page (`REMOVE_CHOICE`).~~ Implemented (`removeChoicesFromPiniaStore` + `swapRowsWithRemount` refactor) — pending user retest.
-4. Floating badge: either wire up `showFloatingBadge()` (always-on or via a new setting) or delete the dead code.
+4. ~~Floating badge.~~ Removed entirely per user (2026-09-17).
 5. JSON Import live re-sync (reuse the same remount machinery; add a re-sync command that injects new + removes gone ids).
 6. Narrow `host_permissions` / content-script matches; restrict postMessage origins.
 7. Extract shared helpers into a common module; deduplicate.

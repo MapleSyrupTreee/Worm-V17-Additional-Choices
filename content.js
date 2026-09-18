@@ -82,9 +82,6 @@
 
       // Re-sync choices with new point types to ensure clean afterText
       syncSavedChoicesToPage();
-
-      // Render floating badge
-      // showFloatingBadge();
     } else if (event.data.type === 'CHOICE_INJECTED_SUCCESS') {
       showToast('Custom choice added to CYOA!');
     } else if (event.data.type === 'CHOICE_REMOVED_SUCCESS') {
@@ -123,37 +120,7 @@
     }
   });
 
-  // 4. In-page Floating Badge
-  async function showFloatingBadge() {
-    const { settings = { showIndicator: true } } = await chrome.storage.local.get('settings');
-    if (settings.showIndicator === false) return;
-
-    if (document.getElementById('worm-v17-badge-container')) return;
-
-    requestAnimationFrame(() => {
-      const container = document.createElement('div');
-      container.id = 'worm-v17-badge-container';
-      container.innerHTML = `
-        <span class="worm-badge-dot"></span>
-        <span class="worm-badge-title">Worm CYOA Mod</span>
-        <button class="worm-badge-add-btn" id="worm-floating-add-btn" title="Add a custom option">+ Add Choice</button>
-        <button class="worm-badge-close" id="worm-floating-close-btn" title="Dismiss">&times;</button>
-      `;
-
-      container.querySelector('#worm-floating-add-btn').addEventListener('click', () => {
-        openAddChoiceModal();
-      });
-
-      container.querySelector('#worm-floating-close-btn').addEventListener('click', (e) => {
-        e.stopPropagation();
-        container.remove();
-      });
-
-      document.body.appendChild(container);
-    });
-  }
-
-  // 5. In-Page "Add Choice" Modal
+  // 4. In-Page "Add Choice" Modal
   function openAddChoiceModal(preselectedRowId = '') {
     if (document.getElementById('worm-modal-overlay')) return;
 
@@ -298,7 +265,7 @@
     document.body.appendChild(overlay);
   }
 
-  // 6. Handle choice saving and live injection
+  // 5. Handle choice saving and live injection
   async function handleInjectChoice(choice) {
     const { customChoices = [] } = await chrome.storage.local.get('customChoices');
     // Check if updating existing
@@ -318,7 +285,7 @@
     }, '*');
   }
 
-  // 7. Toast notification helper
+  // 6. Toast notification helper
   function showToast(message) {
     const existing = document.querySelector('.worm-toast');
     if (existing) existing.remove();

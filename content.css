@@ -3,7 +3,6 @@
    runs inside the host page and must not collide with its variables). */
 
 #worm-modal-overlay,
-#worm-v17-badge-container,
 .worm-toast {
   --wv-bg-1: #131318;
   --wv-bg-2: #1a1a21;
@@ -21,89 +20,6 @@
   --wv-speed: 160ms;
   color-scheme: dark;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-}
-
-/* Floating Badge */
-#worm-v17-badge-container {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  z-index: 2147483640;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(19, 19, 24, 0.88);
-  color: var(--wv-text-1);
-  border: 1px solid var(--wv-stroke-strong);
-  border-radius: 999px;
-  padding: 7px 8px 7px 14px;
-  font-size: 12.5px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(14px) saturate(140%);
-  user-select: none;
-  animation: wormFadeIn 0.3s var(--wv-ease);
-}
-
-@keyframes wormFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(12px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.worm-badge-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--wv-accent);
-  box-shadow: 0 0 8px rgba(139, 92, 246, 0.8);
-}
-
-.worm-badge-title {
-  font-weight: 600;
-  letter-spacing: 0.2px;
-  color: var(--wv-text-1);
-}
-
-.worm-badge-add-btn {
-  background: var(--wv-accent);
-  color: #ffffff;
-  border: none;
-  border-radius: 999px;
-  padding: 5px 12px;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background var(--wv-speed) var(--wv-ease), transform var(--wv-speed) var(--wv-ease), box-shadow var(--wv-speed) var(--wv-ease);
-}
-
-.worm-badge-add-btn:hover {
-  background: var(--wv-accent-hover);
-  transform: translateY(-1px);
-  box-shadow: 0 3px 10px rgba(139, 92, 246, 0.4);
-}
-
-.worm-badge-close {
-  background: transparent;
-  border: none;
-  color: var(--wv-text-3);
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  font-size: 15px;
-  line-height: 1;
-  cursor: pointer;
-  transition: color var(--wv-speed) var(--wv-ease), background var(--wv-speed) var(--wv-ease);
-}
-
-.worm-badge-close:hover {
-  color: var(--wv-text-1);
-  background: rgba(255, 255, 255, 0.08);
 }
 
 /* Modal Overlay & Dialog */
@@ -382,7 +298,7 @@
 }
 
 /* Focus & motion (scoped to our roots) */
-:is(#worm-modal-overlay, #worm-v17-badge-container) :where(button, [tabindex]):focus-visible {
+:is(#worm-modal-overlay) :where(button, [tabindex]):focus-visible {
   outline: 2px solid var(--wv-accent);
   outline-offset: 2px;
 }
@@ -390,8 +306,6 @@
 @media (prefers-reduced-motion: reduce) {
   #worm-modal-overlay,
   #worm-modal-overlay *,
-  #worm-v17-badge-container,
-  #worm-v17-badge-container *,
   .worm-toast,
   .worm-toast * {
     animation: none !important;
