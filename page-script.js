@@ -271,26 +271,17 @@
           const cur = store.store;
           const curRows = cur?.file?.data?.rows;
           if (!Array.isArray(curRows)) return;
-          const merged = new Map();
-          for (const [rowId, newRow] of newRowById) {
-            const curRow = curRows.find(r => r.id === rowId) || newRow;
-            const objects = Array.isArray(curRow.objects) ? curRow.objects.slice() : [];
-            for (const raw of choices) {
-              const c = normalizeChoice(raw, cur.file.data.pointTypes || []);
-              if (c.rowId !== rowId) continue;
-              const ci = objects.findIndex(o => o.id === c.id);
-              if (ci >= 0) objects[ci] = c;
-              else objects.push(c);
-            }
-            merged.set(rowId, { ...curRow, objects });
-          }
+          // Restore the affected rows WITH their full object lists (originals +
+          // the new choices) from newRowById. Do NOT merge with the live rows:
+          // they are the emptied copies written by step 1, so merging with them
+          // would drop every pre-existing object in the row.
           store.store = {
             ...cur,
             file: {
               ...cur.file,
               data: {
                 ...cur.file.data,
-                rows: curRows.map(r => merged.get(r.id) || r)
+                rows: curRows.map(r => newRowById.get(r.id) || r)
               }
             }
           };
