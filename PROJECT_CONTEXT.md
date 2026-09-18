@@ -10,7 +10,7 @@
 > probe it with targeted searches only.
 
 ## 1. Project Summary
-A **Chrome Extension (Manifest V3, v0.1.0)** that injects custom choices, perks, powers, and drawbacks
+A **Chrome Extension (Manifest V3, v0.2.0)** that injects custom choices, perks, powers, and drawbacks
 into **Lt Ouroumov's Worm CYOA v17** (Interactive CYOA built on the "ICC Neo" engine).
 
 - Target sites (per README): `https://cyoa.ltouroumov.ch/viewer/` and `https://ltouroumov.github.io/cyoa-editor/`
@@ -121,13 +121,22 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
 - No env vars, no `.env`, no config files. All runtime config = `chrome.storage.local` settings.
 
 ## 7. Git / Worktree State
-- History (clean, linear, on `master`; no remote):
-  - `4dccfec` — Baseline commit: original extension sources + this context file (2026-09-17).
-  - `d5d40dc` — Fix live injection (viewer-source-based): symbol-agnostic Pinia discovery,
-    proxy-aware store access, CollectionLoader-aware two-step injection.
+- History (clean, linear, on `master`; no remote), newest first:
+  - `8b7acb2` — Remove floating badge entirely (dead feature, per user).
+  - `ae0c3f9` — Popup: status dot next to the title (message = tooltip).
+  - `ced74df` — Remove non-functional Settings section.
+  - `2880e12` — Redesign UI to "Obsidian Violet" (+ segmented Cost/Gain control).
+  - `aa769f2` — Live-remove custom choices (popup delete → `REMOVE_CHOICE`).
+  - `536defc` — Update PROJECT_CONTEXT (confirmed viewer runtime facts, live-injection fix).
   - `722c49f` — Fix step-2 restore dropping existing row objects (restore from `newRowById`).
+  - `d5d40dc` — Fix live injection (symbol-agnostic Pinia discovery, proxy-aware store access,
+    CollectionLoader-aware two-step injection).
+  - `4dccfec` — Baseline commit: original extension sources + this context file (2026-09-17).
 - Earlier diagnostic-round commits were squashed away by an intentional `git reset --hard` to
   the baseline; history above is authoritative.
+- Version: bumped `0.1.0` → `0.2.0` (2026-09-17) after the injection fixes, live removal,
+  redesign, and feature removals. On future bumps keep `manifest.json`, the popup version pill,
+  and this file in sync.
 - Author identity: Maple <49483389+MapleSyrupTreee@users.noreply.github.com>.
 - A global `safe.directory` exception exists for this folder (filesystem doesn't record ownership).
 - No remote configured.
