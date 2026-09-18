@@ -513,36 +513,24 @@
     editorElIndex.clear();
     if (!EDITOR_UI.data) return;
     const wrappers = document.querySelectorAll(EDITOR_SEL.rowWrapper);
-    wrappers.forEach((wrapper) => {
-      const rowData = editorRowDataForWrapper(wrapper);
+    wrappers.forEach((wrapper, wIdx) => {
+      const rowData = EDITOR_UI.data.rows[wIdx];
       if (!rowData) return;
+      // The viewer renders cards in objects-array order (v-for), so POSITION is
+      // the authoritative mapping — titles are only a sanity check.
       const cards = Array.from(wrapper.querySelectorAll(EDITOR_SEL.cardGrid + ' > .col > ' + EDITOR_SEL.card));
-      const pool = rowData.objects.map(o => ({ id: o.id, title: o.title || '' }));
-      const assigned = new Array(cards.length).fill(null);
-      // Pass 1: unique exact-title matches
-      cards.forEach((card, i) => {
-        const title = (card.querySelector(EDITOR_SEL.cardTitle)?.textContent || '').trim();
-        if (!title) return;
-        const hits = pool.filter(o => o && o.title === title);
-        if (hits.length === 1) {
-          assigned[i] = hits[0].id;
-          pool[pool.indexOf(hits[0])] = null;
+      cards.forEach((card, cIdx) => {
+        const obj = rowData.objects[cIdx];
+        if (!obj) {
+          console.warn('[Worm Forge] More cards than data objects in row "' + (rowData.title || rowData.id) + '" — card #' + cIdx + ' unmapped.');
+          return;
         }
-      });
-      // Pass 2: everything else in DOM order
-      let pi = 0;
-      cards.forEach((card, i) => {
-        if (assigned[i]) return;
-        while (pi < pool.length && !pool[pi]) pi++;
-        if (pi < pool.length) {
-          assigned[i] = pool[pi].id;
-          pool[pi] = null;
+        const domTitle = (card.querySelector(EDITOR_SEL.cardTitle)?.textContent || '').trim();
+        if (obj.title && domTitle && obj.title !== domTitle) {
+          console.warn('[Worm Forge] Title mismatch (info only) row "' + (rowData.title || rowData.id) + '": data="' + obj.title + '" dom="' + domTitle + '"');
         }
-      });
-      cards.forEach((card, i) => {
-        if (!assigned[i]) return;
-        editorCardIndex.set(assigned[i], card);
-        editorElIndex.set(card, assigned[i]);
+        editorCardIndex.set(obj.id, card);
+        editorElIndex.set(card, obj.id);
       });
     });
   }
@@ -715,6 +703,21 @@
         e.preventDefault();
         e.stopPropagation();
         editorSelect(objId);
+      } else {
+        // Still unmapped: dump diagnostics so the console tells us exactly why.
+        const wrapper = cardEl.closest(EDITOR_SEL.rowWrapper);
+        const wIdx = wrapper ? Array.prototype.indexOf.call(document.querySelectorAll(EDITOR_SEL.rowWrapper), wrapper) : -1;
+        const cardsInRow = wrapper ? wrapper.querySelectorAll(EDITOR_SEL.cardGrid + ' > .col > ' + EDITOR_SEL.card).length : -1;
+        const cardIdx = wrapper ? Array.prototype.indexOf.call(wrapper.querySelectorAll(EDITOR_SEL.cardGrid + ' > .col > ' + EDITOR_SEL.card), cardEl) : -1;
+        const rowData = EDITOR_UI.data && wIdx >= 0 ? EDITOR_UI.data.rows[wIdx] : null;
+        console.warn('[Worm Forge DIAG] Click unmapped.', {
+          cardTitle: (cardEl.querySelector('.obj-title')?.textContent || '').trim(),
+          wrapperIndex: wIdx, cardIndex: cardIdx, cardsInRow,
+          dataRowExists: !!rowData,
+          dataObjects: rowData ? rowData.objects.length : -1,
+          dataTitles: rowData ? rowData.objects.map(o => o.title) : null,
+          indexSize: editorCardIndex.size
+        });
       }
       return;
     }
