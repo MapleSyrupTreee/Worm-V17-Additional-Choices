@@ -704,7 +704,13 @@
     if (e.target.closest('.worm-editor-ui, #worm-editor-layer, #worm-modal-overlay, #worm-confirm-overlay')) return;
     const cardEl = e.target.closest(EDITOR_SEL.card);
     if (cardEl) {
-      const objId = editorObjIdForElement(cardEl);
+      let objId = editorObjIdForElement(cardEl);
+      if (!objId) {
+        // The card was re-created by a remount after our last reindex —
+        // rebuild the index on the spot and retry the lookup.
+        editorIndexCards();
+        objId = editorObjIdForElement(cardEl);
+      }
       if (objId) {
         e.preventDefault();
         e.stopPropagation();

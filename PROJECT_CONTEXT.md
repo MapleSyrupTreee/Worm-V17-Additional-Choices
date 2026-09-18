@@ -145,6 +145,8 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
   titles `.obj-title`; viewer detail-zoom button `.obj-controls` (hidden in edit mode).
   GOTCHA: CollectionLoader re-adds cards INCREMENTALLY after remount → reindex via debounced
   MutationObserver, not fixed timers. GOTCHA: undo/redo stacks hold {op, inverse} pairs.
+  GOTCHA: after any remount the old card elements are replaced — click handler SELF-HEALS by
+  re-running editorIndexCards() when a clicked card is not in the index (0.2.6).
   Remaining phases: P3 drag & drop, P4 row dialogs, P5 overlay persistence, P6 polish.
 - 0.2.5 fixes (user feedback on the Meta button): Card Width now shows "(Row default)" when the
   object inherits the row width (objectWidth '' is the COMMON case — 14k of 14.3k objects) and
