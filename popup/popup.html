@@ -7,74 +7,82 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div class="header">
-    <div class="logo-title">
-      <img src="../icons/icon-48.png" alt="Logo" class="logo">
-      <div>
-        <h1>Worm V17 CYOA</h1>
-        <p class="subtitle">Additional Choices Mod</p>
+  <div class="pop">
+
+    <!-- Header -->
+    <header class="pop-header">
+      <div class="brand">
+        <img src="../icons/icon-48.png" alt="" class="logo">
+        <div class="brand-text">
+          <h1>Worm V17 CYOA</h1>
+          <p class="tagline">Additional Choices</p>
+        </div>
       </div>
-    </div>
-    <span class="version-badge">v0.1.0</span>
-  </div>
+      <span class="version-pill">v0.1.0</span>
+    </header>
 
-  <!-- Status Card -->
-  <div class="card status-card">
-    <div class="status-header">
-      <span class="status-indicator" id="statusIndicator"></span>
-      <span class="status-label" id="statusText">Checking CYOA tab...</span>
-    </div>
-    <div class="cyoa-details" id="cyoaDetails">
-      <div class="detail-item">
-        <span>Categories:</span>
-        <strong id="groupCount">-</strong>
+    <!-- Status -->
+    <section class="pop-section">
+      <div class="status-line">
+        <span class="status-indicator" id="statusIndicator"></span>
+        <span class="status-label" id="statusText">Checking CYOA tab…</span>
       </div>
-      <div class="detail-item">
-        <span>Point Currencies:</span>
-        <strong id="pointCount">-</strong>
+      <div class="stats-line">
+        <span class="stat"><strong id="groupCount">–</strong> sections</span>
+        <span class="stat-sep">·</span>
+        <span class="stat"><strong id="pointCount">–</strong> point types</span>
       </div>
-    </div>
-  </div>
+    </section>
 
-  <!-- Action Card -->
-  <div class="card">
-    <button id="openInPageModalBtn" class="primary-btn">✦ Add Choice (In-Page)</button>
-  </div>
+    <!-- Primary action -->
+    <section class="pop-section">
+      <button id="openInPageModalBtn" class="btn-primary" title="Opens the Add Choice modal on the CYOA tab">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>
+        Add Choice
+      </button>
+    </section>
 
-  <!-- Custom Choices Manager -->
-  <div class="card">
-    <div class="card-header-flex">
-      <h2>Custom Choices (<span id="customChoicesCount">0</span>)</h2>
-      <div class="io-actions">
-        <button id="exportBtn" class="link-btn" title="Export as JSON">Export</button>
-        <button id="importBtn" class="link-btn" title="Import from JSON">Import</button>
-        <input type="file" id="importFileInput" accept=".json" style="display: none;" />
+    <!-- Custom choices -->
+    <section class="pop-section">
+      <div class="section-head">
+        <h2 class="section-title">Custom Choices <span class="count-pill" id="customChoicesCount">0</span></h2>
+        <div class="io-actions">
+          <button id="exportBtn" class="btn-ghost" title="Export as JSON">
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v8m0 0 3-3M8 10 5 7M3 13h10"/></svg>
+            Export
+          </button>
+          <button id="importBtn" class="btn-ghost" title="Import from JSON">
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10V2m0 0L5 5m3-3 3 3M3 13h10"/></svg>
+            Import
+          </button>
+          <input type="file" id="importFileInput" accept=".json" hidden>
+        </div>
       </div>
-    </div>
-    <div id="choicesList" class="choices-list">
-      <div class="empty-state">No custom choices added yet. Click above to create one!</div>
-    </div>
-  </div>
+      <div id="choicesList" class="choices-list">
+        <div class="empty-state">No custom choices yet — click “Add Choice” to create one.</div>
+      </div>
+    </section>
 
-  <!-- Settings -->
-  <div class="card settings-card">
-    <h2>Settings</h2>
-    <label class="toggle-row">
-      <span>Enable Extension</span>
-      <input type="checkbox" id="toggleEnabled" checked>
-      <span class="slider"></span>
-    </label>
-    <label class="toggle-row">
-      <span>Show On-Page Floating Badge</span>
-      <input type="checkbox" id="toggleBadge" checked>
-      <span class="slider"></span>
-    </label>
-  </div>
+    <!-- Settings -->
+    <section class="pop-section">
+      <h2 class="section-title settings-title">Settings</h2>
+      <label class="switch-row">
+        <span class="switch-label">Enable extension</span>
+        <input type="checkbox" id="toggleEnabled" checked>
+        <span class="slider"></span>
+      </label>
+      <label class="switch-row">
+        <span class="switch-label">On-page floating badge</span>
+        <input type="checkbox" id="toggleBadge" checked>
+        <span class="slider"></span>
+      </label>
+    </section>
 
-  <div class="footer">
-    <p>Target: <code>ltouroumov.ch</code> & <code>cyoa-editor</code></p>
-  </div>
+    <footer class="pop-footer">
+      Target <code>ltouroumov.ch</code> · <code>cyoa-editor</code>
+    </footer>
 
+  </div>
   <script src="popup.js"></script>
 </body>
 </html>

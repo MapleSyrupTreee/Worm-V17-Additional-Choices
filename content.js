@@ -173,13 +173,13 @@
     overlay.innerHTML = `
       <div id="worm-modal-dialog">
         <div class="worm-modal-header">
-          <h3><span>✦</span> Add Custom Choice</h3>
-          <button class="worm-modal-close-btn" id="worm-modal-close">&times;</button>
+          <h3><span class="worm-modal-glyph">✦</span> Add Custom Choice</h3>
+          <button class="worm-modal-close-btn" id="worm-modal-close" title="Close">&times;</button>
         </div>
         <form id="worm-add-choice-form">
           <div class="worm-modal-body">
             <div class="worm-form-group">
-              <label for="worm-target-row">Target Category / Section</label>
+              <label for="worm-target-row">Destination</label>
               <select id="worm-target-row" class="worm-form-select" required>
                 ${rowOptionsHtml}
               </select>
@@ -197,20 +197,20 @@
 
             <div class="worm-form-group">
               <label>Point Modifier</label>
-              <div class="worm-score-row">
-                <select id="worm-point-effect" class="worm-form-select" style="max-width: 100px;">
-                  <option value="cost">Cost (-)</option>
-                  <option value="gain">Gain (+)</option>
-                </select>
-                <input type="number" id="worm-point-amount" class="worm-form-input" placeholder="Amount" min="0" value="5" style="max-width: 90px;" />
-                <select id="worm-point-type" class="worm-form-select" style="flex: 1;">
-                  ${pointOptionsHtml}
-                </select>
+              <div class="worm-modifier-grid">
+                <div class="worm-segmented" role="group" aria-label="Effect type">
+                  <button type="button" class="worm-seg-btn is-active" data-effect="cost">− Cost</button>
+                  <button type="button" class="worm-seg-btn" data-effect="gain">+ Gain</button>
+                </div>
+                <input type="number" id="worm-point-amount" class="worm-form-input" placeholder="0" min="0" value="5" />
               </div>
+              <select id="worm-point-type" class="worm-form-select worm-mt8">
+                ${pointOptionsHtml}
+              </select>
             </div>
 
             <div class="worm-form-group">
-              <label for="worm-choice-image">Image URL (Optional)</label>
+              <label for="worm-choice-image">Image URL <span class="worm-label-soft">(optional)</span></label>
               <input type="url" id="worm-choice-image" class="worm-form-input" placeholder="https://example.com/image.png" />
             </div>
           </div>
@@ -229,6 +229,11 @@
 
     overlay.querySelector('#worm-modal-close').addEventListener('click', closeModal);
     overlay.querySelector('#worm-modal-cancel').addEventListener('click', closeModal);
+    overlay.querySelectorAll('.worm-seg-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        overlay.querySelectorAll('.worm-seg-btn').forEach((b) => b.classList.toggle('is-active', b === btn));
+      });
+    });
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) closeModal();
     });
@@ -239,7 +244,8 @@
       const rowId = overlay.querySelector('#worm-target-row').value;
       const title = overlay.querySelector('#worm-choice-title').value.trim();
       const text = overlay.querySelector('#worm-choice-text').value.trim();
-      const effect = overlay.querySelector('#worm-point-effect').value; // 'cost' or 'gain'
+      const activeSeg = overlay.querySelector('.worm-seg-btn.is-active');
+      const effect = activeSeg ? activeSeg.dataset.effect : 'cost'; // 'cost' or 'gain'
       const amount = Math.abs(parseInt(overlay.querySelector('#worm-point-amount').value, 10)) || 0;
       const pointTypeId = overlay.querySelector('#worm-point-type').value;
       const image = overlay.querySelector('#worm-choice-image').value.trim();
