@@ -36,8 +36,8 @@ content.css          Styles for badge, modal, toast
 page-script.js       (~15 KB)  MAIN world: wraps window.fetch to intercept *project*.json (persistence on
                                reload); polls (1s x 60) to hook the Pinia "project" store; live-injects
                                custom choices via two-step shallowRef replacement (see section 4)
-popup/popup.html|css|js        Popup dashboard: connection status, choice list w/ delete,
-                               JSON export/import (settings section removed — toggles were non-functional)
+popup/popup.html|css|js        Popup dashboard: header status dot (message = tooltip), choice list
+                               w/ delete, JSON export/import (settings + stats sections removed)
 icons/icon-16|48|128.png       Manifest icons
 README.md            Features + manual "Load unpacked" instructions
 ```
@@ -61,7 +61,10 @@ README.md            Features + manual "Load unpacked" instructions
    point type, image URL) and persists new choices.
 5. `popup/popup.js` reads/writes storage, exports/imports JSON, deletes choices, queries the
    active tab via `GET_PAGE_STATUS`. (Settings section removed 2026-09-17 — both toggles were
-   non-functional; the popup no longer writes the `settings` storage key.)
+   non-functional; the popup no longer writes the `settings` key. Status/stats section also
+   removed — status is now a dot in the header title with the message as its tooltip.
+   `lastDetectedCYOA` is still written by content.js for its own score normalization, but the
+   popup no longer reads it.)
 6. Message protocol: extension → page uses `{ target: 'WORM_CYOA_PAGE_SCRIPT', command, payload }`;
    page → extension uses `{ source: 'WORM_CYOA_PAGE_SCRIPT', type, data }`.
 

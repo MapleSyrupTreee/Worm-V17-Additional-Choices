@@ -2,9 +2,6 @@
 
 document.addEventListener('DOMContentLoaded', async () => {
   const statusIndicator = document.getElementById('statusIndicator');
-  const statusText = document.getElementById('statusText');
-  const groupCount = document.getElementById('groupCount');
-  const pointCount = document.getElementById('pointCount');
   const customChoicesCount = document.getElementById('customChoicesCount');
   const choicesList = document.getElementById('choicesList');
   const openInPageModalBtn = document.getElementById('openInPageModalBtn');
@@ -14,16 +11,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let activeTabId = null;
 
-  // 1. Load custom choices & last detected CYOA metadata
-  const { customChoices = [], lastDetectedCYOA = null } =
-    await chrome.storage.local.get(['customChoices', 'lastDetectedCYOA']);
+  // 1. Load custom choices
+  const { customChoices = [] } = await chrome.storage.local.get('customChoices');
 
   renderChoicesList(customChoices);
-
-  if (lastDetectedCYOA) {
-    groupCount.textContent = lastDetectedCYOA.rows?.length || 0;
-    pointCount.textContent = lastDetectedCYOA.pointTypes?.length || 0;
-  }
 
   // 2. Open in-page modal button
   openInPageModalBtn.addEventListener('click', async () => {
@@ -122,18 +113,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const response = await chrome.tabs.sendMessage(tab.id, { action: 'GET_PAGE_STATUS' });
       if (response && response.metadata) {
-        const { rows = [], pointTypes = [] } = response.metadata;
         statusIndicator.className = 'status-indicator active';
-        statusText.textContent = 'Worm CYOA Active';
-        groupCount.textContent = rows.length;
-        pointCount.textContent = pointTypes.length;
+        statusIndicator.title = 'Worm CYOA Active';
       } else {
         statusIndicator.className = 'status-indicator';
-        statusText.textContent = 'Connected (waiting for metadata)';
+        statusIndicator.title = 'Connected (waiting for metadata)';
       }
     } catch (msgErr) {
       statusIndicator.className = 'status-indicator';
-      statusText.textContent = 'Reload CYOA page to connect';
+      statusIndicator.title = 'Reload CYOA page to connect';
     }
   } catch (err) {
     console.error('Error connecting to tab:', err);
@@ -142,7 +130,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function setInactive(msg) {
     statusIndicator.className = 'status-indicator inactive';
-    statusText.textContent = msg;
+    statusIndicator.title = msg;
   }
 
   function renderChoicesList(choices) {

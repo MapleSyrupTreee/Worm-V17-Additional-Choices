@@ -100,22 +100,17 @@ h1 {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---- Status ---- */
-
-.status-line {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-weight: 600;
-  font-size: 12.5px;
-}
+/* ---- Status dot (lives in the header title) ---- */
 
 .status-indicator {
-  flex: none;
+  display: inline-block;
+  vertical-align: middle;
   width: 8px;
   height: 8px;
+  margin: -2px 0 0 7px;
   border-radius: 50%;
   background: var(--warn);
+  cursor: help;
 }
 
 .status-indicator.active {
@@ -135,24 +130,6 @@ h1 {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
-
-.stats-line {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  margin-top: 6px;
-  padding-left: 17px;
-  font-size: 11.5px;
-  color: var(--text-3);
-}
-
-.stats-line strong {
-  color: var(--text-1);
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
-}
-
-.stat-sep { opacity: 0.6; }
 
 /* ---- Buttons ---- */
 
