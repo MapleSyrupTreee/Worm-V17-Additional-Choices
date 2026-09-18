@@ -36,8 +36,8 @@ content.css          Styles for badge, modal, toast
 page-script.js       (~15 KB)  MAIN world: wraps window.fetch to intercept *project*.json (persistence on
                                reload); polls (1s x 60) to hook the Pinia "project" store; live-injects
                                custom choices via two-step shallowRef replacement (see section 4)
-popup/popup.html|css|js        Popup dashboard: connection status, settings toggles, choice list w/ delete,
-                               JSON export/import
+popup/popup.html|css|js        Popup dashboard: connection status, choice list w/ delete,
+                               JSON export/import (settings section removed — toggles were non-functional)
 icons/icon-16|48|128.png       Manifest icons
 README.md            Features + manual "Load unpacked" instructions
 ```
@@ -59,8 +59,9 @@ README.md            Features + manual "Load unpacked" instructions
    Page-script replies: `CYOA_METADATA_LOADED`, `CHOICE_INJECTED_SUCCESS`.
 4. `content.js` renders the in-page "Add Choice" modal (category, title, description, cost/gain,
    point type, image URL) and persists new choices.
-5. `popup/popup.js` reads/writes storage, exports/imports JSON, deletes choices, toggles
-   `settings.enabled`/`showIndicator`, queries active tab via `GET_PAGE_STATUS`.
+5. `popup/popup.js` reads/writes storage, exports/imports JSON, deletes choices, queries the
+   active tab via `GET_PAGE_STATUS`. (Settings section removed 2026-09-17 — both toggles were
+   non-functional; the popup no longer writes the `settings` storage key.)
 6. Message protocol: extension → page uses `{ target: 'WORM_CYOA_PAGE_SCRIPT', command, payload }`;
    page → extension uses `{ source: 'WORM_CYOA_PAGE_SCRIPT', type, data }`.
 
@@ -134,7 +135,9 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
   (see section 4a). Persistence on reload still goes through the fetch interceptor.
 
 **Still open (confirmed from code):**
-1. **`settings.enabled` toggle is dead** — popup writes it; nothing in content.js/page-script.js reads it.
+1. **Settings UI removed (2026-09-17)** — `settings.enabled` was dead (nothing read it) and the
+   badge toggle controlled `showIndicator`, read only by the never-invoked `showFloatingBadge()`.
+   The popup no longer writes `settings`; `content.js#showFloatingBadge` remains as dead code.
 2. **Floating badge never appears** — `showFloatingBadge()` (content.js) defined but its only call site is commented out. README claims this feature works.
 3. **JSON Import doesn't live-inject** — popup only re-pings `GET_PAGE_STATUS`; no re-sync command sent.
 4. **Over-broad permissions** — `<all_urls>` content scripts/host permissions vs. two known target sites.
@@ -164,7 +167,7 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
 1. ~~Initialize git + baseline commit.~~ ✅ Done (`4dccfec`).
 2. ~~Fix live injection without page refresh.~~ ✅ Done & user-verified (`d5d40dc` + `722c49f`).
 3. ~~Popup delete updates the live page (`REMOVE_CHOICE`).~~ Implemented (`removeChoicesFromPiniaStore` + `swapRowsWithRemount` refactor) — pending user retest.
-4. Restore floating badge invocation; honor `settings.enabled`/`showIndicator` in content.js.
+4. Floating badge: either wire up `showFloatingBadge()` (always-on or via a new setting) or delete the dead code.
 5. JSON Import live re-sync (reuse the same remount machinery; add a re-sync command that injects new + removes gone ids).
 6. Narrow `host_permissions` / content-script matches; restrict postMessage origins.
 7. Extract shared helpers into a common module; deduplicate.

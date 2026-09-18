@@ -8,20 +8,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   const customChoicesCount = document.getElementById('customChoicesCount');
   const choicesList = document.getElementById('choicesList');
   const openInPageModalBtn = document.getElementById('openInPageModalBtn');
-  const toggleEnabled = document.getElementById('toggleEnabled');
-  const toggleBadge = document.getElementById('toggleBadge');
   const exportBtn = document.getElementById('exportBtn');
   const importBtn = document.getElementById('importBtn');
   const importFileInput = document.getElementById('importFileInput');
 
   let activeTabId = null;
 
-  // 1. Load settings & custom choices
-  const { settings = { enabled: true, showIndicator: true }, customChoices = [], lastDetectedCYOA = null } =
-    await chrome.storage.local.get(['settings', 'customChoices', 'lastDetectedCYOA']);
-
-  toggleEnabled.checked = settings.enabled !== false;
-  toggleBadge.checked = settings.showIndicator !== false;
+  // 1. Load custom choices & last detected CYOA metadata
+  const { customChoices = [], lastDetectedCYOA = null } =
+    await chrome.storage.local.get(['customChoices', 'lastDetectedCYOA']);
 
   renderChoicesList(customChoices);
 
@@ -30,18 +25,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     pointCount.textContent = lastDetectedCYOA.pointTypes?.length || 0;
   }
 
-  // 2. Settings toggle handlers
-  toggleEnabled.addEventListener('change', async () => {
-    settings.enabled = toggleEnabled.checked;
-    await chrome.storage.local.set({ settings });
-  });
-
-  toggleBadge.addEventListener('change', async () => {
-    settings.showIndicator = toggleBadge.checked;
-    await chrome.storage.local.set({ settings });
-  });
-
-  // 3. Open in-page modal button
+  // 2. Open in-page modal button
   openInPageModalBtn.addEventListener('click', async () => {
     if (!activeTabId) {
       alert('No active CYOA tab found. Please navigate to the Worm CYOA page.');
@@ -55,7 +39,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // 4. Export & Import
+  // 3. Export & Import
   exportBtn.addEventListener('click', async () => {
     const { customChoices = [] } = await chrome.storage.local.get('customChoices');
     if (customChoices.length === 0) {
@@ -120,7 +104,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // 5. Connect to active tab
+  // 4. Connect to active tab
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.id) {
