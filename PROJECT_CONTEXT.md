@@ -134,9 +134,10 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
   - `4dccfec` — Baseline commit: original extension sources + this context file (2026-09-17).
 - Earlier diagnostic-round commits were squashed away by an intentional `git reset --hard` to
   the baseline; history above is authoritative.
-- Version: bumped `0.1.0` → `0.2.0` (2026-09-17) after the injection fixes, live removal,
-  redesign, and feature removals. On future bumps keep `manifest.json`, the popup version pill,
-  and this file in sync.
+- Version policy (user, 2026-09-17): **every commit bumps the patch** (`0.2.1`, `0.2.2`, …);
+  roll the minor at feature milestones (`0.3.0` next). Keep `manifest.json`, the popup version
+  pill, and this file in sync on every bump. Current: `0.2.1`.
+- Interactive editor plan: see `tasks/plan.md` (approved scope pending).
 - Author identity: Maple <49483389+MapleSyrupTreee@users.noreply.github.com>.
 - A global `safe.directory` exception exists for this folder (filesystem doesn't record ownership).
 - No remote configured.
