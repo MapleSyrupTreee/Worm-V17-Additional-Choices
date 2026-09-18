@@ -190,7 +190,27 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
   moveObject with the after-removal index (same-row rightward moves use visualIndex−1; same
   -slot drops are no-ops); selection follows the card via keep-restore; moveObject toast now
   names the destination row. Phase 4 skipped by user decision — engine row ops remain but
-  UI-less. Remaining: P5 overlay persistence, P6 polish (0.3.0).
+  UI-less.
+- **0.2.14 — Phase 5 persistence (Task 9 core; USER-FACING)**: every engine op updates a compact
+  overlay in `chrome.storage.local` (`editorOverlay` v1: `objects` patches by id, `deleted` ids,
+  `rowPatches` by rowId, `rowOrder` id-lists per touched row — all idempotent, quota-friendly).
+  content.js maintains it via the op now included in every EDITOR_DATA_CHANGED broadcast
+  (serialized read-modify-write queue; runs even when the editor UI is off). page-script re-applies
+  it to the freshly-fetched project.json in the fetch interceptor (customs bake first, then
+  patches → deletions → row patches → GLOBAL row-order pass that can relocate objects across
+  rows incl. into empty rows), with a deferred live-store fallback for late syncs. Popup gains a
+  red "Discard All Edits" (wipes overlay + customChoices, reloads pristine). Verified in the
+  document_start-faithful harness: edit + cross-row move into empty row + delete + add all
+  survive repeated reloads; rename survives; idempotent re-application; 0 console errors.
+  THREE race bugs found and fixed during verification: (1) TDZ — overlay sync ran before its
+  const declaration; (2) live apply raced the customs injection remount (snapshot of emptied
+  rows → data loss) → applyOverlayToLiveStore now defers past in-flight swaps with a
+  mid-remount guard; (3) double live customs injection after the interceptor baked them →
+  `customsBakedInFetch` flag (INJECT_SINGLE_CHOICE still forces live injection). Also all
+  swapRowsWithRemount callers are now SERIALIZED inside the function (an in-flight two-step
+  swap must never interleave with another). Remaining P5: popup export/import v2 of overlays.
+  HARNESS NOTE: use page.addInitScript (sync XHR loader @ document_start) + localStorage-backed
+  chrome.storage shim — the old inject-after-load harness exercised only the racy fallback.
 - 0.2.5 fixes (user feedback on the Meta button): Card Width now shows "(Row default)" when the
   object inherits the row width (objectWidth '' is the COMMON case — 14k of 14.3k objects) and
   never silently overwrites; phantom modifier row removed (empty scores = empty editor + hint);

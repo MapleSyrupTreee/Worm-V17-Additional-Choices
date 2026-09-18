@@ -5,6 +5,14 @@
 
   // In-memory registry of custom choices and detected project reference
   let savedCustomChoices = [];
+  // Editor overlay (Phase 5): compact record of editor mutations, re-applied to
+  // the freshly-fetched project.json on every load. Synced from content.js.
+  // Shape: { version: 1, objects: {objId: patch}, deleted: [objId],
+  //          rowPatches: {rowId: patch}, rowOrder: {rowId: [objId,...]} }
+  let editorOverlay = null;
+  let overlayAppliedInFetch = false;
+  let overlayAppliedToLive = false;
+  let customsBakedInFetch = false; // interceptor already merged customs into project.json
   let detectedProject = null;
   let hookAttempts = 0;
   let activeProjectStore = null;
@@ -88,6 +96,17 @@
           // Merge any saved custom choices into the JSON before the viewer reads it
           if (savedCustomChoices.length > 0) {
             applyChoicesToRawProject(json, savedCustomChoices);
+            customsBakedInFetch = true; // live re-injection is redundant from here on
+          }
+
+          // Apply the editor overlay (edits/moves/deletes/row edits) on top
+          if (editorOverlay) {
+            const res = applyOverlayToRows(json.rows, editorOverlay);
+            json.rows = res.rows;
+            overlayAppliedInFetch = true;
+            if (res.touched.length > 0) {
+              console.log('[Worm V17 Mod] Editor overlay applied to intercepted project.json:', res.touched.length + ' row(s)');
+            }
           }
 
           // Broadcast metadata early
@@ -164,6 +183,7 @@
         console.log('[Worm V17 Mod] Connected to Pinia project store!');
         emitCyoaMetadata(fileData.rows, fileData.pointTypes);
         applyChoicesToPiniaStore(piniaStore, savedCustomChoices);
+        applyOverlayToLiveStore();
         clearInterval(hookInterval);
         return;
       }
@@ -202,6 +222,135 @@
     }
   }
 
+  // Applies the editor overlay to a rows array PURELY (no in-place mutation):
+  // returns { rows: newRows, touched: [rowId,...] }. Order of application:
+  // object field patches → deletions → row field patches → row orders
+  // (row orders last, so custom choices baked in beforehand get positioned).
+  function applyOverlayToRows(rows, overlay) {
+    const touched = [];
+    if (!overlay || !Array.isArray(rows)) return { rows, touched };
+    let newRows = rows;
+    const replaceRow = (rowId, build) => {
+      const idx = newRows.findIndex(r => r.id === rowId);
+      if (idx < 0) return;
+      const updated = build(newRows[idx]);
+      if (updated) {
+        newRows = arrReplace(newRows, idx, updated);
+        if (!touched.includes(rowId)) touched.push(rowId);
+      }
+    };
+    // 1) per-object field patches
+    const objPatches = overlay.objects || {};
+    const patchByRow = new Map();
+    Object.keys(objPatches).forEach((objId) => {
+      for (const row of newRows) {
+        if (!Array.isArray(row.objects)) continue;
+        if (row.objects.some(o => o && o.id === objId)) {
+          if (!patchByRow.has(row.id)) patchByRow.set(row.id, []);
+          patchByRow.get(row.id).push(objId);
+          break;
+        }
+      }
+    });
+    patchByRow.forEach((ids, rowId) => {
+      replaceRow(rowId, (row) => ({
+        ...row,
+        objects: row.objects.map(o => (o && ids.includes(o.id)) ? { ...o, ...cloneValue(objPatches[o.id]) } : o),
+      }));
+    });
+    // 2) deletions
+    const deleted = Array.isArray(overlay.deleted) ? overlay.deleted : [];
+    if (deleted.length) {
+      const dead = new Set(deleted);
+      newRows = newRows.map(row => {
+        if (!Array.isArray(row.objects)) return row;
+        const kept = row.objects.filter(o => !(o && dead.has(o.id)));
+        if (kept.length !== row.objects.length) {
+          if (!touched.includes(row.id)) touched.push(row.id);
+          return { ...row, objects: kept };
+        }
+        return row;
+      });
+    }
+    // 3) per-row field patches (requireds etc.)
+    const rowPatches = overlay.rowPatches || {};
+    Object.keys(rowPatches).forEach((rowId) => {
+      replaceRow(rowId, (row) => ({ ...row, ...cloneValue(rowPatches[rowId]) }));
+    });
+    // 4) row orders — GLOBAL pass: order lists may relocate objects across
+    // rows (drag & drop between rows), so a listed id is pulled from ANY
+    // ordered row; objects listed nowhere keep their original row/tail order.
+    const rowOrder = overlay.rowOrder || {};
+    const orderRowIds = Object.keys(rowOrder).filter(rid => Array.isArray(rowOrder[rid]) && rowOrder[rid].length > 0);
+    if (orderRowIds.length) {
+      const allListed = new Set();
+      orderRowIds.forEach(rid => rowOrder[rid].forEach(id => allListed.add(id)));
+      const pool = new Map(); // id -> object (from any ordered row)
+      orderRowIds.forEach((rid) => {
+        const row = newRows.find(r => r.id === rid);
+        if (!row || !Array.isArray(row.objects)) return;
+        row.objects.forEach(o => { if (o && o.id) pool.set(o.id, o); });
+      });
+      const desired = new Map(); // rowId -> final object list
+      orderRowIds.forEach((rid) => {
+        const list = rowOrder[rid].map(id => pool.get(id)).filter(Boolean);
+        const row = newRows.find(r => r.id === rid);
+        (row && Array.isArray(row.objects) ? row.objects : []).forEach(o => {
+          if (o && o.id && !allListed.has(o.id)) list.push(o); // unlisted leftovers stay here
+        });
+        desired.set(rid, list);
+      });
+      orderRowIds.forEach((rid) => {
+        replaceRow(rid, (row) => {
+          const list = desired.get(rid) || [];
+          const cur = Array.isArray(row.objects) ? row.objects : [];
+          if (list.length !== cur.length || list.some((o, i) => cur[i] !== o)) return { ...row, objects: list };
+          return null; // already correct
+        });
+      });
+    }
+    return { rows: newRows, touched };
+  }
+
+  // Fallback for the race where the page loaded before the overlay sync
+  // arrived: apply the overlay straight to the hooked live store (once).
+  // DEFERRED past any in-flight two-step remount (custom injection empties
+  // rows for 50ms) — applying mid-remount would snapshot emptied rows and
+  // lose the objects. Re-checks and retries a few times for safety.
+  function applyOverlayToLiveStore(attempt = 0) {
+    try {
+      if (!editorOverlay || overlayAppliedInFetch || overlayAppliedToLive) return;
+      const store = findPiniaProjectStore();
+      if (!store || !store.store || store.store.status !== 'loaded' || !store.store.file?.data || !Array.isArray(store.store.file.data.rows)) {
+        if (attempt < 30) setTimeout(() => applyOverlayToLiveStore(attempt + 1), 1000);
+        return;
+      }
+      const data = store.store.file.data;
+      const rowOrder = editorOverlay.rowOrder || {};
+      // Mid-remount guard: an ordered row that is empty while its order list
+      // has entries means a two-step swap is in flight — wait for it.
+      const midRemount = Object.keys(rowOrder).some(rid => {
+        const row = data.rows.find(r => r.id === rid);
+        return row && Array.isArray(row.objects) && row.objects.length === 0 && rowOrder[rid].length > 0;
+      });
+      if (midRemount && attempt < 6) { setTimeout(() => applyOverlayToLiveStore(attempt + 1), 120); return; }
+      overlayAppliedToLive = true;
+      const res = applyOverlayToRows(data.rows, editorOverlay);
+      if (res.touched.length === 0) return;
+      const emptiedMap = new Map();
+      const restoreMap = new Map();
+      res.touched.forEach((rowId) => {
+        const origRow = data.rows.find(r => r.id === rowId);
+        const newRow = res.rows.find(r => r.id === rowId);
+        if (origRow) emptiedMap.set(rowId, { ...origRow, objects: [] });
+        if (newRow) restoreMap.set(rowId, newRow);
+      });
+      swapRowsWithRemount(store, emptiedMap, restoreMap, '[Worm V17 Mod] Editor overlay applied to live store: ' + res.touched.length + ' row(s)');
+    } catch (err) {
+      console.warn('[Worm V17 Mod] Failed to apply editor overlay to live store:', err);
+    }
+  }
+
   // Shared two-step row remount used by both injection (add/update) and removal.
   // CollectionLoader renders each row's items incrementally with a timer that
   // PAUSES once complete; it only resumes when the row's `isVisible` prop flips,
@@ -210,7 +359,18 @@
   // then restore the full row copies 50ms later — the loader remounts and re-renders
   // every item. Selection state lives in the store (`selected`/`selectedIds`), so it
   // survives the remount. Row maps: rowId -> full replacement row object.
+  // Every row swap (customs injection, removal, editor ops, overlay apply)
+  // funnels through here and is SERIALIZED: an in-flight two-step swap must
+  // never interleave with another (a restore built from emptied rows would
+  // corrupt the object lists). Deferred swaps re-run with identical args.
+  let lastRowSwapAt = 0;
   function swapRowsWithRemount(store, emptiedMap, restoreMap, successLog, onDone) {
+    const since = Date.now() - lastRowSwapAt;
+    if (since < 120) {
+      setTimeout(() => swapRowsWithRemount(store, emptiedMap, restoreMap, successLog, onDone), 120 - since);
+      return;
+    }
+    lastRowSwapAt = Date.now();
     const replaceRows = (stateVal, rowMap) => {
       const file = stateVal.file;
       const data = file.data;
@@ -234,6 +394,7 @@
     // emptied copies written by step 1 (merging would corrupt object lists).
     setTimeout(() => {
       try {
+        lastRowSwapAt = Date.now(); // keep the next swap from racing this restore
         const cur = store.store;
         const curRows = cur?.file?.data?.rows;
         if (!Array.isArray(curRows)) return;
@@ -292,8 +453,12 @@
     }
   }
 
-  function applyChoicesToPiniaStore(store, choices) {
+  function applyChoicesToPiniaStore(store, choices, opts = {}) {
     try {
+      // When the fetch interceptor already baked the customs into project.json,
+      // re-injecting them live is redundant — and the extra remount can race
+      // the overlay application. Single-choice popup adds pass { force: true }.
+      if (customsBakedInFetch && !(opts && opts.force)) return false;
       // On the Pinia store proxy, refs are unwrapped: `store.store` IS the raw
       // shallowRef value ({ status, file: { data: { rows, pointTypes } }, ... }).
       // Writing via plain assignment (`store.store = {...}`) routes through the
@@ -723,6 +888,7 @@
           type: 'EDITOR_DATA_CHANGED',
           data: {
             opType: op.type,
+            op: cloneValue(op),
             label: result.label || '',
             extra: result.extra || null,
             deletedIds: op.type === 'deleteObjects' ? (op.ids || []).slice() : [],
@@ -786,6 +952,16 @@
         const vue2 = findVue2App();
         if (vue2) applyChoicesToVue2(vue2, savedCustomChoices);
       }
+    } else if (command === 'SYNC_EDITOR_OVERLAY') {
+      editorOverlay = (payload && typeof payload === 'object' && payload.version === 1) ? payload : null;
+      console.log('[Worm V17 Mod] Synced editor overlay:', editorOverlay
+        ? (Object.keys(editorOverlay.objects || {}).length + ' object edit(s), ' +
+           (editorOverlay.deleted || []).length + ' deletion(s), ' +
+           Object.keys(editorOverlay.rowPatches || {}).length + ' row edit(s), ' +
+           Object.keys(editorOverlay.rowOrder || {}).length + ' ordered row(s)')
+        : 'cleared');
+      // If the page loaded before this sync arrived, apply to the live store now.
+      applyOverlayToLiveStore();
     } else if (command === 'INJECT_SINGLE_CHOICE') {
       const choice = payload;
       const idx = savedCustomChoices.findIndex(c => c.id === choice.id);
@@ -794,7 +970,7 @@
 
       const piniaStore = findPiniaProjectStore();
       if (piniaStore && piniaStore.store?.file?.data) {
-        applyChoicesToPiniaStore(piniaStore, [choice]);
+        applyChoicesToPiniaStore(piniaStore, [choice], { force: true });
       } else {
         const vue2 = findVue2App();
         if (vue2) applyChoicesToVue2(vue2, [choice]);

@@ -154,9 +154,24 @@ and is persisted as a lightweight overlay so edits survive page reloads via the 
   pointer-events, user-reported) → `8fce187` + `b898be3` (positional mapping + click
   self-heal, user-reported) → `ec9c720` (post-step-2 broadcast, user-reported) → `620ea65`
   (0.2.5 dialog fixes, user-reported) → `620ea65..ec9c720` verified by user.
-- **REMAINING**: P5 overlay persistence + popup export/import integration, P6 polish → target
+- **REMAINING**: P5 remainder (popup export/import v2 including overlays), P6 polish → target
   minor bump 0.3.0. (Phase 4 row management SKIPPED by user decision; its `addRow`/`updateRow`/
   `deleteRow`/`moveRow` engine ops remain implemented and unused.)
+- **0.2.14 — Phase 5 persistence (Task 9 core, USER-FACING)**: every engine op updates a compact
+  overlay (`editorOverlay` v1: `objects` patches, `deleted` ids, `rowPatches`, `rowOrder`) in
+  chrome.storage; the fetch interceptor re-applies it to the fresh project.json on every load
+  (customs bake first → patches → deletions → row patches → global row-order pass supporting
+  cross-row moves into empty rows), with a deferred live-store fallback for late syncs.
+  Popup: red "Discard All Edits" (wipes overlay + customs, reloads pristine). Verified in the
+  document_start-faithful harness: edit + move-into-empty-row + delete + add all survive
+  repeated reloads; rename persists; idempotent; 0 console errors. Three race bugs found and
+  fixed: (1) TDZ on the overlay sync; (2) live overlay apply raced the customs-injection
+  remount (snapshot of emptied rows → data loss) → deferred past in-flight swaps with a
+  mid-remount guard; (3) double live customs injection after the interceptor baked them →
+  `customsBakedInFetch` flag (INJECT_SINGLE_CHOICE passes `{force:true}`). ALL
+  swapRowsWithRemount callers are now serialized inside the function. HARNESS: use
+  page.addInitScript (sync XHR loader @ document_start) + localStorage-backed shim — the old
+  inject-after-load harness exercised only the racy fallback path.
 - Testing harness notes: see PROJECT_CONTEXT §11.
 - **0.2.10 polish (user request)**: edit mode shows each choice's data id as a click-to-copy
   badge at the card's top-right (`.worm-obj-id-badge`, created on every index pass, removed on

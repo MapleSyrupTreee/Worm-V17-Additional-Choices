@@ -322,7 +322,10 @@ h1 {
 .pop-footer {
   padding: 10px 16px;
   border-top: 1px solid var(--stroke);
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 10.5px;
   color: var(--text-3);
 }
@@ -333,6 +336,17 @@ h1 {
   border-radius: 5px;
   padding: 1px 5px;
   font-size: 10px;
+}
+
+.pop-footer .btn-discard {
+  color: var(--bad);
+  margin-right: auto;
+}
+
+.pop-footer .btn-discard:hover {
+  color: #ff8f8f;
+  border-color: rgba(242, 109, 109, 0.55);
+  background: rgba(242, 109, 109, 0.08);
 }
 
 /* ---- Focus & motion ---- */

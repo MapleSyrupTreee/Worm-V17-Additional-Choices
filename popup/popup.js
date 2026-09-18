@@ -30,6 +30,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  // 2b. Discard all edits (overlay + custom choices) and reload the page
+  const discardAllBtn = document.getElementById('discardAllBtn');
+  discardAllBtn.addEventListener('click', async () => {
+    if (!activeTabId) {
+      alert('No active CYOA tab found.');
+      return;
+    }
+    if (!confirm('Discard ALL editor changes on this page?\n\nEvery edit, move, addition and deletion made in the editor will be wiped and the page will reload pristine. This cannot be undone.')) {
+      return;
+    }
+    try {
+      await chrome.tabs.sendMessage(activeTabId, { action: 'DISCARD_ALL_EDITS' });
+      window.close();
+    } catch (err) {
+      alert('Could not reach the CYOA tab. Try reloading the page.');
+    }
+  });
+
   // 3. Export & Import
   exportBtn.addEventListener('click', async () => {
     const { customChoices = [] } = await chrome.storage.local.get('customChoices');

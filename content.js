@@ -59,7 +59,16 @@
     }
   }
 
+  const EDITOR_OVERLAY_KEY = 'editorOverlay';
+  let overlayQueue = Promise.resolve(); // serialize storage read-modify-write
+
   syncSavedChoicesToPage();
+
+  // Sync the editor overlay to page-script for the fetch-interceptor path.
+  chrome.storage.local.get(EDITOR_OVERLAY_KEY).then((res) => {
+    const overlay = res[EDITOR_OVERLAY_KEY] || null;
+    window.postMessage({ target: 'WORM_CYOA_PAGE_SCRIPT', command: 'SYNC_EDITOR_OVERLAY', payload: overlay }, '*');
+  }).catch(() => {});
 
   // 2. Listen for messages from page-script.js (MAIN world)
   window.addEventListener('message', async (event) => {
@@ -134,6 +143,22 @@
         command: 'REMOVE_CHOICE',
         payload: message.choiceId
       }, '*');
+      sendResponse({ status: 'ok' });
+      return true;
+    } else if (message.action === 'DISCARD_ALL_EDITS') {
+      // Safety hatch: wipe the overlay + custom choices, then reload so the
+      // page comes back pristine from the original project.json.
+      (async () => {
+        try {
+          await chrome.storage.local.set({ editorOverlay: null, customChoices: [] });
+          window.postMessage({ target: 'WORM_CYOA_PAGE_SCRIPT', command: 'SYNC_EDITOR_OVERLAY', payload: null }, '*');
+          window.postMessage({ target: 'WORM_CYOA_PAGE_SCRIPT', command: 'SYNC_CUSTOM_CHOICES', payload: [] }, '*');
+          showToast('All edits discarded — reloading…');
+          setTimeout(() => window.location.reload(), 700);
+        } catch (err) {
+          showToast('Discard failed: ' + (err && err.message ? err.message : err));
+        }
+      })();
       sendResponse({ status: 'ok' });
       return true;
     }
@@ -307,15 +332,19 @@
   function editorHandleDataChanged(data) {
     if (!data) return;
     if (EDITOR_UI.dragState) editorEndDrag(false); // card geometry is about to change
+    const prevData = EDITOR_UI.data; // pre-op snapshot (source-row lookup for moves)
     if (data.snapshot && EDITOR_UI.active) EDITOR_UI.data = data.snapshot;
-    if (!EDITOR_UI.active) return;
-    const keep = EDITOR_UI.selection && EDITOR_UI.selection.objId;
-    if (data.label) showToast(data.label);
+    if (data.op && data.snapshot) overlayApplyOp(data, prevData);
+    // Storage bookkeeping must run even when the editor UI is off (e.g. the
+    // last op before an exit, or broadcasts racing the toggle).
     if (data.opType === 'deleteObjects' && Array.isArray(data.deletedIds) && data.deletedIds.length > 0) {
       editorPurgeDeletedCustomChoices(data.deletedIds);
     } else if ((data.opType === 'duplicateObject' || data.opType === 'addObject') && data.extra && data.extra.object) {
       editorTrackNewChoice(data.extra.object);
     }
+    if (!EDITOR_UI.active) return;
+    const keep = EDITOR_UI.selection && EDITOR_UI.selection.objId;
+    if (data.label) showToast(data.label);
     // Remounts settle in two steps (empty now, restore ~50ms later), so
     // re-index immediately AND after the DOM stabilizes.
     const reindex = () => {
@@ -363,6 +392,114 @@
     } catch (err) {
       console.warn('[Worm V17 Mod] Failed to track duplicated choice:', err);
     }
+  }
+
+  // ==========================================================================
+  // Editor overlay persistence (Phase 5): every engine op updates a compact
+  // overlay record in chrome.storage; page-script re-applies it to the
+  // freshly-fetched project.json on every page load (fetch-interceptor path,
+  // with a live-store fallback if the sync arrives after load).
+  // overlay = { version: 1, objects: {objId: patch}, deleted: [objId],
+  //             rowPatches: {rowId: patch}, rowOrder: {rowId: [objId,...]} }
+  // ==========================================================================
+  function overlayRowIdOf(snapshot, objId) {
+    if (!snapshot || !Array.isArray(snapshot.rows)) return null;
+    for (const r of snapshot.rows) {
+      if (Array.isArray(r.objects) && r.objects.some(o => o && o.id === objId)) return r.id;
+    }
+    return null;
+  }
+
+  function overlayIdsOfRow(snapshot, rowId) {
+    const row = snapshot && Array.isArray(snapshot.rows) ? snapshot.rows.find(r => r.id === rowId) : null;
+    return row && Array.isArray(row.objects) ? row.objects.map(o => o.id) : null;
+  }
+
+  function overlayApplyOp(data, prevData) {
+    overlayQueue = overlayQueue.then(async () => {
+      try {
+        const op = data.op || {};
+        const snapshot = data.snapshot || null;
+        const res = await chrome.storage.local.get(EDITOR_OVERLAY_KEY);
+        const raw = res[EDITOR_OVERLAY_KEY];
+        const overlay = (raw && raw.version === 1) ? raw : { version: 1, objects: {}, deleted: [], rowPatches: {}, rowOrder: {} };
+        overlay.objects = overlay.objects || {};
+        overlay.deleted = Array.isArray(overlay.deleted) ? overlay.deleted : [];
+        overlay.rowPatches = overlay.rowPatches || {};
+        overlay.rowOrder = overlay.rowOrder || {};
+        let touched = false;
+
+        switch (op.type) {
+          case 'updateObject':
+            if (op.objId && op.patch) {
+              overlay.objects[op.objId] = { ...(overlay.objects[op.objId] || {}), ...op.patch };
+              touched = true;
+            }
+            break;
+          case 'updateRow':
+            if (op.rowId && op.patch) {
+              overlay.rowPatches[op.rowId] = { ...(overlay.rowPatches[op.rowId] || {}), ...op.patch };
+              touched = true;
+            }
+            break;
+          case 'moveObject': {
+            const destIds = overlayIdsOfRow(snapshot, op.toRowId);
+            if (destIds) { overlay.rowOrder[op.toRowId] = destIds; touched = true; }
+            // Source row (from the PRE-op snapshot) also needs its order refreshed.
+            const srcRowId = overlayRowIdOf(prevData, op.objId);
+            if (srcRowId && srcRowId !== op.toRowId) {
+              const srcIds = overlayIdsOfRow(snapshot, srcRowId);
+              if (srcIds) { overlay.rowOrder[srcRowId] = srcIds; touched = true; }
+            }
+            break;
+          }
+          case 'addObject':
+          case 'duplicateObject': {
+            const id = op.object && op.object.id;
+            const rid = id ? overlayRowIdOf(snapshot, id) : null;
+            if (rid) {
+              const ids = overlayIdsOfRow(snapshot, rid);
+              if (ids) { overlay.rowOrder[rid] = ids; touched = true; }
+            }
+            break;
+          }
+          case 'restoreObjects': {
+            const ids = (op.entries || []).map(e => e.object && e.object.id).filter(Boolean);
+            if (ids.length) {
+              overlay.deleted = overlay.deleted.filter(id => !ids.includes(id));
+              ids.forEach((id) => {
+                const rid = overlayRowIdOf(snapshot, id);
+                if (rid) {
+                  const ordered = overlayIdsOfRow(snapshot, rid);
+                  if (ordered) { overlay.rowOrder[rid] = ordered; }
+                }
+              });
+              touched = true;
+            }
+            break;
+          }
+          case 'deleteObjects': {
+            const ids = op.ids || [];
+            if (ids.length) {
+              overlay.deleted = Array.from(new Set([...overlay.deleted, ...ids]));
+              ids.forEach((id) => { delete overlay.objects[id]; });
+              Object.keys(overlay.rowOrder).forEach((rid) => {
+                overlay.rowOrder[rid] = overlay.rowOrder[rid].filter(id => !ids.includes(id));
+              });
+              touched = true;
+            }
+            break;
+          }
+          default:
+            return; // unknown ops don't touch the overlay
+        }
+        if (touched) {
+          await chrome.storage.local.set({ [EDITOR_OVERLAY_KEY]: overlay });
+        }
+      } catch (err) {
+        console.warn('[Worm V17 Mod] Failed to update editor overlay:', err);
+      }
+    });
   }
 
   function editorRowDataForWrapper(wrapper) {
