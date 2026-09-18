@@ -109,60 +109,11 @@
   };
 
   // =========================================================================
-  // 3. Live DOM Updater (Injects choice into CollectionLoader without reload)
+  // 3. (removed) The old DOM-level updater relied on `__vueParentComponent`,
+  //    which production Vue builds do not attach to elements. Live updates are
+  //    handled entirely through the Pinia "project" store in
+  //    applyChoicesToPiniaStore() below.
   // =========================================================================
-  function forceRowUpdate(rowId, newObject) {
-    const rowEl = document.querySelector('#row-' + rowId);
-    if (!rowEl) return false;
-
-    function findLoader(comp) {
-      if (!comp) return null;
-      if (comp.setupState && Array.isArray(comp.setupState.visible?.value)) {
-        return comp;
-      }
-      if (comp.subTree) {
-        return findLoaderInVNode(comp.subTree);
-      }
-      return null;
-    }
-
-    function findLoaderInVNode(vnode) {
-      if (!vnode) return null;
-      if (vnode.component) {
-        const found = findLoader(vnode.component);
-        if (found) return found;
-      }
-      if (Array.isArray(vnode.children)) {
-        for (const child of vnode.children) {
-          if (child && typeof child === 'object') {
-            const found = findLoaderInVNode(child);
-            if (found) return found;
-          }
-        }
-      }
-      return null;
-    }
-
-    const comp = rowEl.__vueParentComponent || rowEl.querySelector('.project-row')?.__vueParentComponent;
-    const loader = findLoader(comp);
-
-    if (loader && loader.setupState && loader.setupState.visible) {
-      const visibleList = loader.setupState.visible;
-      const exists = visibleList.value.some(o => o.id === newObject.id);
-      if (!exists) {
-        visibleList.value.push(newObject);
-        if (loader.setupState.index) {
-          loader.setupState.index.value++;
-        }
-      } else {
-        const idx = visibleList.value.findIndex(o => o.id === newObject.id);
-        visibleList.value.splice(idx, 1, newObject);
-      }
-      console.log('[Worm V17 Mod] Injected choice directly into visible row DOM for:', rowId);
-      return true;
-    }
-    return false;
-  }
 
   // =========================================================================
   // 4. Vue / Pinia Store Runtime Hook
@@ -173,10 +124,13 @@
       const app = nuxtEl.__vue_app__;
       const provides = app._context?.provides;
       if (provides) {
-        const piniaKey = Object.getOwnPropertySymbols(provides).find(s => s.toString().includes('pinia'));
-        const pinia = piniaKey ? provides[piniaKey] : provides.pinia;
-        if (pinia && pinia._s && pinia._s.has('project')) {
-          return pinia._s.get('project');
+        // The Pinia instance is provided under an anonymous Symbol() in production
+        // builds (no 'pinia' description), so identify it by its _s store map instead.
+        for (const s of Object.getOwnPropertySymbols(provides)) {
+          const v = provides[s];
+          if (v && v._s && typeof v._s.has === 'function' && v._s.has('project')) {
+            return v._s.get('project');
+          }
         }
       }
     }
@@ -203,9 +157,9 @@
     hookAttempts++;
 
     const piniaStore = findPiniaProjectStore();
-    if (piniaStore && piniaStore.store && piniaStore.store.value && piniaStore.store.value.status === 'loaded') {
+    if (piniaStore && piniaStore.store && piniaStore.store.status === 'loaded') {
       activeProjectStore = piniaStore;
-      const fileData = piniaStore.store.value.file?.data;
+      const fileData = piniaStore.store.file?.data;
       if (fileData) {
         console.log('[Worm V17 Mod] Connected to Pinia project store!');
         emitCyoaMetadata(fileData.rows, fileData.pointTypes);
@@ -250,42 +204,106 @@
 
   function applyChoicesToPiniaStore(store, choices) {
     try {
-      const fileData = store.store.value?.file?.data;
-      if (!fileData || !Array.isArray(fileData.rows)) return;
-      const pointTypes = fileData.pointTypes || [];
-
-      for (const raw of choices) {
-        const choice = normalizeChoice(raw, pointTypes);
-        const row = fileData.rows.find(r => r.id === choice.rowId);
-        if (row) {
-          if (!Array.isArray(row.objects)) row.objects = [];
-          const existingIdx = row.objects.findIndex(o => o.id === choice.id);
-          if (existingIdx >= 0) {
-            row.objects.splice(existingIdx, 1, choice);
-          } else {
-            row.objects.push(choice);
-          }
-
-          // Live visual update into the row's CollectionLoader
-          forceRowUpdate(row.id, choice);
-        }
+      // On the Pinia store proxy, refs are unwrapped: `store.store` IS the raw
+      // shallowRef value ({ status, file: { data: { rows, pointTypes } }, ... }).
+      // Writing via plain assignment (`store.store = {...}`) routes through the
+      // proxy setter into the underlying shallowRef and triggers reactivity.
+      const stateVal = store.store;
+      if (!stateVal || stateVal.status !== 'loaded' || !stateVal.file?.data || !Array.isArray(stateVal.file.data.rows)) {
+        return false;
       }
+      const file = stateVal.file;
+      const data = file.data;
+      const rows = data.rows;
 
-      // Reassign store shallowRef so all store computed properties (getObject, getObjectRow, points) recompute!
-      store.store.value = {
-        ...store.store.value,
-        file: {
-          ...store.store.value.file,
-          data: {
-            ...fileData,
-            rows: [...fileData.rows]
-          }
+      // Merge the normalized choices into COPIES of their target rows, keyed by rowId.
+      // Untouched rows keep their original object references.
+      const newRowById = new Map();
+      for (const raw of choices) {
+        const choice = normalizeChoice(raw, data.pointTypes || []);
+        const origRow = rows.find(r => r.id === choice.rowId);
+        if (!origRow) {
+          console.warn('[Worm V17 Mod] rowId not found for choice:', choice.rowId);
+          continue;
         }
+        const target = newRowById.get(choice.rowId) || origRow;
+        const objects = Array.isArray(target.objects) ? target.objects.slice() : [];
+        const existingIdx = objects.findIndex(o => o.id === choice.id);
+        if (existingIdx >= 0) {
+          objects[existingIdx] = choice;
+        } else {
+          objects.push(choice);
+        }
+        newRowById.set(choice.rowId, { ...target, objects });
+      }
+      if (newRowById.size === 0) return false;
+
+      const replaceRows = (rowMap) => {
+        store.store = {
+          ...stateVal,
+          file: {
+            ...file,
+            data: {
+              ...data,
+              rows: rows.map(r => rowMap.get(r.id) || r)
+            }
+          }
+        };
       };
 
-      console.log('[Worm V17 Mod] Injected & updated Pinia store with custom choices:', choices.length);
+      // CollectionLoader renders each row's items incrementally with a timer that
+      // PAUSES once complete; it only resumes when the row's `isVisible` prop flips,
+      // so simply growing `objects` leaves the loader's internal list stale.
+      // Trick: empty the affected rows (their loader unmounts via v-if="objects.length>0"),
+      // then restore the full object list on the next tick — the loader remounts and
+      // re-renders every item, including the new choice. Selection state lives in the
+      // store (`selected`/`selectedIds`), so it survives the remount.
+      const emptiedMap = new Map();
+      for (const rowId of newRowById.keys()) {
+        const origRow = rows.find(r => r.id === rowId);
+        emptiedMap.set(rowId, { ...origRow, objects: [] });
+      }
+      replaceRows(emptiedMap);
+
+      setTimeout(() => {
+        try {
+          // Re-read the current state in case the app changed it in the interim.
+          const cur = store.store;
+          const curRows = cur?.file?.data?.rows;
+          if (!Array.isArray(curRows)) return;
+          const merged = new Map();
+          for (const [rowId, newRow] of newRowById) {
+            const curRow = curRows.find(r => r.id === rowId) || newRow;
+            const objects = Array.isArray(curRow.objects) ? curRow.objects.slice() : [];
+            for (const raw of choices) {
+              const c = normalizeChoice(raw, cur.file.data.pointTypes || []);
+              if (c.rowId !== rowId) continue;
+              const ci = objects.findIndex(o => o.id === c.id);
+              if (ci >= 0) objects[ci] = c;
+              else objects.push(c);
+            }
+            merged.set(rowId, { ...curRow, objects });
+          }
+          store.store = {
+            ...cur,
+            file: {
+              ...cur.file,
+              data: {
+                ...cur.file.data,
+                rows: curRows.map(r => merged.get(r.id) || r)
+              }
+            }
+          };
+          console.log('[Worm V17 Mod] Injected & updated Pinia store with custom choices:', choices.length);
+        } catch (err) {
+          console.error('[Worm V17 Mod] Error during live injection (step 2):', err);
+        }
+      }, 50);
+
+      return true;
     } catch (err) {
       console.error('[Worm V17 Mod] Error applying choices to Pinia store:', err);
+      return false;
     }
   }
 
@@ -356,7 +374,7 @@
       console.log('[Worm V17 Mod] Synced custom choices count:', savedCustomChoices.length);
 
       const piniaStore = findPiniaProjectStore();
-      if (piniaStore && piniaStore.store?.value?.file?.data) {
+      if (piniaStore && piniaStore.store?.file?.data) {
         applyChoicesToPiniaStore(piniaStore, savedCustomChoices);
       } else {
         const vue2 = findVue2App();
@@ -369,7 +387,7 @@
       else savedCustomChoices.push(choice);
 
       const piniaStore = findPiniaProjectStore();
-      if (piniaStore && piniaStore.store?.value?.file?.data) {
+      if (piniaStore && piniaStore.store?.file?.data) {
         applyChoicesToPiniaStore(piniaStore, [choice]);
       } else {
         const vue2 = findVue2App();
@@ -383,8 +401,8 @@
       }, '*');
     } else if (command === 'REQUEST_METADATA') {
       const piniaStore = findPiniaProjectStore();
-      if (piniaStore && piniaStore.store?.value?.file?.data) {
-        const d = piniaStore.store.value.file.data;
+      if (piniaStore && piniaStore.store?.file?.data) {
+        const d = piniaStore.store.file.data;
         emitCyoaMetadata(d.rows, d.pointTypes);
       } else if (detectedProject) {
         emitCyoaMetadata(detectedProject.rows, detectedProject.pointTypes);
