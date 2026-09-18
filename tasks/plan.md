@@ -181,6 +181,13 @@ and is persisted as a lightweight overlay so edits survive page reloads via the 
   signals `STORAGE_IMPORTED` → content.js re-syncs page-script and reloads so the fetch
   interceptor applies everything. (3) Pencil glyph removed from the "Edit CYOA" toggle
   (still "✓ Done Editing" when active).
+- **0.2.16 (user request)**: the Edit CYOA toggle (and its Ctrl+E listener) is gated behind an
+  URL allowlist (`EDITOR_URL_ALLOWLIST` in content.js — host + port + path-prefix entries):
+  `cyoa.ltouroumov.ch` (any path, default ports only), `ltouroumov.github.io/cyoa-editor/`,
+  `localhost:8123/viewer/` + `127.0.0.1` equivalent (dev harness). The button is absent
+  everywhere else; custom-choice injection itself is unchanged. Verified: 14-case unit table
+  for the predicate (incl. wrong ports, non-http protocols, lookup-param spoofing) plus live
+  positive/negative page tests on the same origin.
 - Testing harness notes: see PROJECT_CONTEXT §11.
 - **0.2.10 polish (user request)**: edit mode shows each choice's data id as a click-to-copy
   badge at the card's top-right (`.worm-obj-id-badge`, created on every index pass, removed on

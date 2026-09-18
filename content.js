@@ -295,7 +295,35 @@
     }
   }
 
+  // The editor toggle is only offered on the intended CYOA viewer sites, so it
+  // never appears on unrelated websites the extension's content scripts touch.
+  // (Custom-choice injection still runs everywhere it can; this gate is
+  // editor-UI-only.)
+  const EDITOR_URL_ALLOWLIST = [
+    { host: 'cyoa.ltouroumov.ch', port: '', pathPrefix: '/' },
+    { host: 'ltouroumov.github.io', port: '', pathPrefix: '/cyoa-editor/' },
+    { host: 'localhost', port: '8123', pathPrefix: '/viewer/' },   // local dev harness
+    { host: '127.0.0.1', port: '8123', pathPrefix: '/viewer/' },
+  ];
+
+  function isEditorAllowedLocation() {
+    try {
+      const u = new URL(window.location.href);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+      const host = u.hostname.toLowerCase();
+      const path = u.pathname || '/';
+      return EDITOR_URL_ALLOWLIST.some(e =>
+        host === e.host &&
+        u.port === e.port &&
+        (path === e.pathPrefix || path.startsWith(e.pathPrefix))
+      );
+    } catch (err) {
+      return false;
+    }
+  }
+
   function ensureEditorToggle() {
+    if (!isEditorAllowedLocation()) return;
     if (document.getElementById('worm-edit-toggle')) return;
     const btn = document.createElement('button');
     btn.id = 'worm-edit-toggle';

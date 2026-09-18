@@ -215,6 +215,10 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
   titles resolved for known ids); popup Export v2 bundles customChoices + editorOverlay and
   Import merges them back (legacy arrays still accepted) then triggers STORAGE_IMPORTED →
   re-sync + reload; pencil glyph dropped from the Edit CYOA toggle.
+  0.2.16 (user request): Edit CYOA toggle gated by EDITOR_URL_ALLOWLIST (cyoa.ltouroumov.ch
+  default-ports any path; ltouroumov.github.io/cyoa-editor/; localhost:8123/viewer/ + 127.0.0.1)
+  — button + Ctrl+E absent elsewhere; custom-choice injection unchanged. 14-case predicate
+  unit table + live positive/negative page tests pass.
 - 0.2.5 fixes (user feedback on the Meta button): Card Width now shows "(Row default)" when the
   object inherits the row width (objectWidth '' is the COMMON case — 14k of 14.3k objects) and
   never silently overwrites; phantom modifier row removed (empty scores = empty editor + hint);
