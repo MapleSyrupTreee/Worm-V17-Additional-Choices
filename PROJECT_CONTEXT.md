@@ -1,7 +1,13 @@
 # PROJECT_CONTEXT.md — Worm V17 CYOA - Additional Choices
 
-> Durable context file for AI sessions. Last updated: 2026-09-17.
+> Durable context file for AI sessions. Last updated: 2026-09-17 (after live-injection fix).
 > Everything below was confirmed by direct inspection of the repository unless marked *(inference)* or *(unknown)*.
+>
+> **Viewer source reference:** the CYOA viewer's built (minified, production) source lives at
+> `D:\Projects\Chrome Extensions\Worm V17 CYOA Viewer`. Key bundles: `assets/TQ4n_O4J.js`
+> (viewer app: stores, CollectionLoader, ViewProjectRow) and `assets/CJ0a6fMV.js`
+> (Vue 3.5.32 + Pinia + Dexie runtime). `project.json` there is ~38 MB — never read it whole;
+> probe it with targeted searches only.
 
 ## 1. Project Summary
 A **Chrome Extension (Manifest V3, v0.1.0)** that injects custom choices, perks, powers, and drawbacks
@@ -27,9 +33,9 @@ background.js        (940 B)   Service worker: seeds storage defaults on install
 content.js           (12.4 KB) Isolated-world bridge: loads/normalizes saved choices, relays messages,
                                renders floating badge (never invoked — see bugs), "Add Choice" modal, toast
 content.css          Styles for badge, modal, toast
-page-script.js       (14.3 KB) MAIN world: wraps window.fetch to intercept *project*.json; polls (1s x 60)
-                               to hook Pinia useProjectStore (Vue 3/Nuxt) with Vue 2 fallback (window.app/#app.__vue__);
-                               injects choices into store data + live row DOM (CollectionLoader)
+page-script.js       (~15 KB)  MAIN world: wraps window.fetch to intercept *project*.json (persistence on
+                               reload); polls (1s x 60) to hook the Pinia "project" store; live-injects
+                               custom choices via two-step shallowRef replacement (see section 4)
 popup/popup.html|css|js        Popup dashboard: connection status, settings toggles, choice list w/ delete,
                                JSON export/import
 icons/icon-16|48|128.png       Manifest icons
@@ -40,9 +46,14 @@ README.md            Features + manual "Load unpacked" instructions
 ## 4. Runtime & Data Flow
 1. `page-script.js` (MAIN world, `document_start`) wraps `window.fetch`; any `*project*.json`
    response with `rows` + `pointTypes` gets saved custom choices merged in and is re-served.
-2. It polls every 1s (max 60 attempts) to hook the CYOA runtime:
-   - Prefer **Pinia `useProjectStore`** (found via `#__nuxt.__vue_app__._context.provides` symbol sniffing)
-   - Fallback to **Vue 2 app** (`window.app` / `#app.__vue__`)
+   This is the **persistence path** — choices baked in on every page load.
+2. It polls every 1s (max 60 attempts) to hook the CYOA runtime (live path):
+   - **Pinia `project` store** — found by scanning `#__nuxt.__vue_app__._context.provides`
+     for any value with an `_s` Map containing id `'project'`. (The Pinia instance is
+     provided under an **anonymous `Symbol()` with an empty description** in production
+     builds — description-based matching fails.)
+   - Fallback to **Vue 2 app** (`window.app` / `#app.__vue__`) — dead code on current ICC
+     Neo builds, kept for legacy ICC support.
 3. `content.js` (isolated world) reads `chrome.storage.local`, normalizes legacy schemas, and
    posts to page-script: `SYNC_CUSTOM_CHOICES` / `INJECT_SINGLE_CHOICE` / `REQUEST_METADATA`.
    Page-script replies: `CYOA_METADATA_LOADED`, `CHOICE_INJECTED_SUCCESS`.
@@ -51,6 +62,43 @@ README.md            Features + manual "Load unpacked" instructions
 5. `popup/popup.js` reads/writes storage, exports/imports JSON, deletes choices, toggles
    `settings.enabled`/`showIndicator`, queries active tab via `GET_PAGE_STATUS`.
 6. Message protocol: extension → page uses `{ target: 'WORM_CYOA_PAGE_SCRIPT', command, payload }`;
+   page → extension uses `{ source: 'WORM_CYOA_PAGE_SCRIPT', type, data }`.
+
+### 4a. Confirmed viewer (ICC Neo) runtime facts — from the viewer's production source
+These are **confirmed from the minified bundles**, not guesses:
+- Nuxt 3 production build. There is **no** `window.app`, no `#app.__vue__`, no `app._instance`,
+  **no `__vueParentComponent` on DOM elements** (dev-only), and no devtools hook. DOM/component
+  introspection is impossible; the Pinia store is the only sane access path.
+- Pinia stores registered: `'project'`, `'viewer'`, `'viewer-settings'` (setup-style stores).
+- The `project` store returns the raw state ref under the key **`store`**:
+  `{ store: <shallowRef>, project: computed, isLocal, isOriginLocal, projectRows, backpack,
+     pointTypes, selected, selectedIds, buildData, buildNotes, buildModified, isLoaded,
+     loadProject, unloadProject, getRow, getObject, getObjectAddon, getObjectRow,
+     getPointType, indexMap, setSelected, incSelected, decSelected }`.
+- State shape: `store.store = { status: 'empty'|'loading'|'loaded', progress?, file: {
+  data: { rows, pointTypes, backpack }, fileName, projectId, projectName, projectHash },
+  local, origin }`.
+- **The state ref is a `shallowRef`** (`Bl` in the bundle) and the loader code calls
+  `triggerRef` after replacing it. **Nested mutations (pushing into `rows[i].objects`) never
+  trigger reactivity** — you must replace the whole value.
+- **Pinia store proxies unwrap refs**: reading `store.store` gives the raw value object
+  (`.value` is undefined there); writing `store.store = newObj` routes through the Vue proxy
+  setter into `ref.value = newObj` and triggers. Never use `store.store.value` on the proxy.
+- **`CollectionLoader`** (`ViewProjectRow` renders one per row with `items: row.objects`,
+  `step: 10`) copies `items` into an internal list with an interval that **pauses itself once
+  complete** and only resumes when the row's `isVisible` prop flips. Growing `objects` leaves
+  its internal list stale (stuck loading skeleton).
+- **Live-injection mechanism (implemented & user-verified):** two-step shallowRef replacement —
+  step 1: replace `store.store` with the affected rows' `objects: []` (row loader unmounts via
+  `v-if="row.objects.length > 0"`); step 2 (50ms later): restore rows with their FULL object
+  lists + the new choice (`newRowById` copies — do NOT merge with the live emptied rows, that
+  drops originals). Loader remounts and re-renders everything; selection state survives
+  (it lives in the store, not the DOM).
+- Dexie db `cyoa-editor` v3 (tables: builds, projects, projects_versions, viewer_builds,
+  viewer_projects_cache, editor_projects, editor_projects_versions) is the viewer's own
+  persistence — **our extension does not write to it**; `viewer_builds[].project` holds only
+  `{projectId, name, hash}` metadata.
+
    page → extension uses `{ source: 'WORM_CYOA_PAGE_SCRIPT', type, data }`.
 
 **State:** entirely `chrome.storage.local` keys: `customChoices`, `settings` (`enabled`, `showIndicator`), `lastDetectedCYOA`.
@@ -69,40 +117,62 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
 - No env vars, no `.env`, no config files. All runtime config = `chrome.storage.local` settings.
 
 ## 7. Git / Worktree State
-- Git repository initialized 2026-09-17 with baseline commit `6d0d6c9` (13 files: all sources + PROJECT_CONTEXT.md).
+- History (clean, linear, on `master`; no remote):
+  - `4dccfec` — Baseline commit: original extension sources + this context file (2026-09-17).
+  - `d5d40dc` — Fix live injection (viewer-source-based): symbol-agnostic Pinia discovery,
+    proxy-aware store access, CollectionLoader-aware two-step injection.
+  - `722c49f` — Fix step-2 restore dropping existing row objects (restore from `newRowById`).
+- Earlier diagnostic-round commits were squashed away by an intentional `git reset --hard` to
+  the baseline; history above is authoritative.
 - Author identity: Maple <49483389+MapleSyrupTreee@users.noreply.github.com>.
-- Note: this filesystem doesn't record ownership, so a global `safe.directory` exception was added
-  for `D:/Projects/Chrome Extensions/Worm V17 Additonal Choices` (required for git to operate here).
-- No remote configured; no branch history beyond baseline.
+- A global `safe.directory` exception exists for this folder (filesystem doesn't record ownership).
+- No remote configured.
 
+## 8. Known Issues / Bugs / Tech Debt
+**FIXED (verified by user):**
+- ~~Live injection requiring page refresh~~ — now works via the Pinia `project` store
+  (see section 4a). Persistence on reload still goes through the fetch interceptor.
 
-## 8. Known Issues / Bugs / Tech Debt (confirmed from code)
-1. **`settings.enabled` toggle is dead** — popup writes it; nothing in content.js or page-script.js reads it.
-2. **Floating badge never appears** — `showFloatingBadge()` (content.js:115) defined but its only call site is commented out (content.js:87). README claims this feature works.
-3. **Popup Delete doesn't remove from live page** — only splices storage; no `REMOVE_CHOICE` command exists in page-script.js. Requires page reload.
+**Still open (confirmed from code):**
+1. **`settings.enabled` toggle is dead** — popup writes it; nothing in content.js/page-script.js reads it.
+2. **Floating badge never appears** — `showFloatingBadge()` (content.js) defined but its only call site is commented out. README claims this feature works.
+3. **Popup Delete doesn't remove from live page** — only splices storage; no `REMOVE_CHOICE` command in page-script.js. Requires page reload.
 4. **JSON Import doesn't live-inject** — popup only re-pings `GET_PAGE_STATUS`; no re-sync command sent.
 5. **Over-broad permissions** — `<all_urls>` content scripts/host permissions vs. two known target sites.
-6. **`postMessage(..., '*')` everywhere** — no origin restriction; page scripts can spoof bridge commands.
-7. **Duplicated logic** — `abbreviatePointName`, score normalization, `escapeHtml` duplicated across content.js / page-script.js / popup.js.
-8. **Fragile engine coupling** — deep Vue internals reflection (`__vueParentComponent`, `loader.setupState.visible`, Pinia symbol keys, `store.store.value = {...}` shallowRef swap) breaks silently if ICC Neo updates; hook interval just gives up after 60s.
-9. **background.js `GET_STATUS` handler** — unused scaffolding *(inference)*.
-10. No version control, tests, or linting.
+6. **`postMessage(..., '*')` everywhere** — no origin restriction.
+7. **Duplicated helpers** — `abbreviatePointName`, score normalization, `escapeHtml` across content.js / page-script.js / popup.js.
+8. **Hook give-up is silent-ish** — hook interval stops after 60 attempts with only a warning in DIAG builds; baseline has no warning.
+9. **Live injection visual flash** — the two-step remount briefly (~50ms) blanks the target row; cosmetic.
+10. **background.js `GET_STATUS` handler** — unused scaffolding *(inference)*.
+11. **Vue 2 fallback is dead code** on current ICC Neo builds (kept intentionally for legacy ICC).
+12. No tests or linting.
 
 ## 9. Ambiguities / Open Questions
-- Is Vue 2 ICC fallback still needed, or is ICC Neo (Vue 3/Pinia) the only target?
+- Is the Vue 2 fallback still needed (does the user ever target legacy ICC deployments)?
 - Which CYOA deployments does the user actually use (viewer, editor, local)?
 - Should the manifest be narrowed to specific origins?
 
 ## 10. Recommended Next Steps (prioritized)
-1. ~~Initialize git + baseline commit.~~ ✅ Done (2026-09-17, baseline commit `6d0d6c9`).
-2. Restore floating badge invocation; honor `settings.enabled`/`showIndicator` in content.js.
-3. Add `REMOVE_CHOICE` / full re-sync command to page-script (fix popup delete + import live update).
-4. Narrow `host_permissions` / content-script matches; restrict postMessage origins.
-5. Extract shared helpers into a common module; deduplicate.
-6. Optional: ESLint + a manual smoke-test checklist.
+1. ~~Initialize git + baseline commit.~~ ✅ Done (`4dccfec`).
+2. ~~Fix live injection without page refresh.~~ ✅ Done & user-verified (`d5d40dc` + `722c49f`).
+3. Restore floating badge invocation; honor `settings.enabled`/`showIndicator` in content.js.
+4. Add `REMOVE_CHOICE` / full re-sync command to page-script (fix popup delete + import live update).
+5. Narrow `host_permissions` / content-script matches; restrict postMessage origins.
+6. Extract shared helpers into a common module; deduplicate.
+7. Optional: ESLint + a manual smoke-test checklist; remove diagnostic leftovers if any remain.
 
 ## 11. Safe Dev Notes for Future Sessions
 - Reload the unpacked extension after any file edit; refresh the CYOA tab.
-- Do not read/reproduce secrets — none exist in this repo.
-- Console prefixes for debugging: `[Worm V17 Mod]` in all four scripts.
+- **Never use `store.store.value` on a Pinia store proxy** — refs are unwrapped; read
+  `store.store` and assign `store.store = {...}`.
+- **Never mutate nested project data** (e.g., `rows[i].objects.push`) — the state ref is a
+  `shallowRef`; replace the whole value via `store.store = {...}`.
+- **Never merge live-injected rows with the store's live row objects during the two-step
+  remount** — step 1 leaves them emptied; restore from the pre-built copies.
+- Do not rewrite files via PowerShell `Set-Content` — it introduced a UTF-8 BOM and mojibake
+  here once; use the editor tool (preserves encoding) instead.
+- `project.json` in the viewer folder is ~38 MB — never read whole; search it with targeted patterns.
+- Console prefixes: `[Worm V17 Mod]` (all scripts), `[Worm V17 Mod DIAG…]` (removed in the
+  current tree after the reset-to-baseline; re-add if needed).
+
 
