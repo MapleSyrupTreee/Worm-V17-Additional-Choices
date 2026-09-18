@@ -158,6 +158,24 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
   USER-VERIFIED (0.2.9): all of the above confirmed working by the user (dialog fixes, Section
   Activation, row-scoped clicks, add-wipe). P0-P2 COMPLETE; remaining: P3 drag & drop, P4 row
   dialogs, P5 overlay persistence, P6 polish (target 0.3.0).
+  0.2.10 polish: choice ids visible in edit mode — click-to-copy badge on each card's top-right
+  and a chip in the edit-dialog header; Template # input removed from the dialog (schema field
+  `template` untouched).
+  0.2.11 (user requests): (1) "Visible" checkbox removed from the choice dialog (isVisible data
+  untouched; new choices still default visible). (2) New Requirements section in the choice
+  dialog (both add + edit): manages this choice's own {type:'id'} requireds — "Needs a choice"
+  (required:true, showRequired:false, beforeText:'Required:') vs "Blocked by a choice"
+  (required:false, showRequired:true, beforeText:'Incompatible:') — term shape verified against
+  6,119 real choice-level terms in project.json; non-id terms preserved verbatim; UI diffed via
+  stableStringify so unchanged requireds emit no patch. (3) Row ＋ now opens the SAME dialog as
+  edit (full field parity: destination select, title/text/image/width, multi-row point
+  modifiers, requirements, behavior) via a new `addObject` editor op (page-script EDITOR_EXEC;
+  inverse=deleteObjects; extra.object tracked in chrome.storage by editorTrackNewChoice, renamed
+  from editorTrackDuplicate). Popup's OPEN_ADD_CHOICE_MODAL routes through the shared dialog
+  after pulling a fresh EDITOR_GET_DATA snapshot; legacy openAddChoiceModal deleted.
+  Verified in harness: add w/ requirement+gain-2 modifier on visible row (card + badge + text
+  render), requirement round-trips, undo removes choice + purges storage; hidden-row state after
+  add is the viewer's own section-reveal gating (row 91nq has NO requireds) — not a regression.
   Remaining phases: P3 drag & drop, P4 row dialogs, P5 overlay persistence, P6 polish.
 - 0.2.5 fixes (user feedback on the Meta button): Card Width now shows "(Row default)" when the
   object inherits the row width (objectWidth '' is the COMMON case — 14k of 14.3k objects) and

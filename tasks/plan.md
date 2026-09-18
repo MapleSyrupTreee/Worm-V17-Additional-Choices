@@ -63,7 +63,7 @@ and is persisted as a lightweight overlay so edits survive page reloads via the 
 - **Edit mode visuals**: rows get a faint dashed outline; cards get hover outline; selected card
   gets a 2px purple selection box with corner handles + floating toolbar above it.
 - **Edit dialog**: Obsidian Violet modal, sections: Content (title, text, image URL + isUrl,
-  width class, template #) · Points (multi-row score editor: point type, −cost/+gain segmented,
+  width class) · Points (multi-row score editor: point type, −cost/+gain segmented,
   amount, per-score showScore) · Behavior (isVisible, isNotSelectable, isSelectableMultiple,
   pick limits, activate/deactivate-this/other-choice) · Advanced (requireds simple builder +
   raw JSON, styling JSON when isPrivateStyling). Save / Cancel / Reset to original.
@@ -153,3 +153,12 @@ and is persisted as a lightweight overlay so edits survive page reloads via the 
 - **REMAINING**: P3 drag & drop, P4 row dialogs (edit/delete/move/re-add rows), P5 overlay
   persistence + popup export/import integration, P6 polish → target minor bump 0.3.0.
 - Testing harness notes: see PROJECT_CONTEXT §11.
+- **0.2.10 polish (user request)**: edit mode shows each choice's data id as a click-to-copy
+  badge at the card's top-right (`.worm-obj-id-badge`, created on every index pass, removed on
+  exit; capture-click handler ignores badge clicks so copy wins over selection) and as a chip
+  in the edit-dialog header (`.worm-id-chip`). The write-only Template # input was removed
+  from the dialog (the `template` schema field itself is untouched — new choices keep 1).
+- **0.2.11 (user requests)**: Visible checkbox removed from the choice dialog; Requirements
+  section added (this choice's {type:'id'} requireds, "Needs"/"Blocked by", term shape copied
+  from real data); row ＋ shares the edit dialog (unified `openChoiceModal`, add = blank object
+  + Destination select, new `addObject` op with deleteObjects inverse + storage tracking).

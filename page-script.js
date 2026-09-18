@@ -505,6 +505,27 @@
       };
     },
 
+    addObject(data, op) {
+      const rowIdx = findRowIndex(data.rows, op.rowId);
+      if (rowIdx < 0) throw new Error('Target row not found: ' + op.rowId);
+      const row = data.rows[rowIdx];
+      const objects = Array.isArray(row.objects) ? row.objects : [];
+      const obj = cloneValue(op.object);
+      if (!obj.id) obj.id = newObjectId();
+      const at = op.index == null || op.index < 0 || op.index > objects.length
+        ? objects.length
+        : op.index;
+      const newRow = { ...row, objects: arrInsert(objects, at, obj) };
+      return {
+        rows: arrReplace(data.rows, rowIdx, newRow),
+        touched: [row.id],
+        remount: true,
+        label: 'Added “' + (obj.title || obj.id) + '”',
+        inverse: { type: 'deleteObjects', ids: [obj.id] },
+        extra: { kind: 'add', object: cloneValue(obj) },
+      };
+    },
+
     moveObject(data, op) {
       const loc = findObjectLocation(data.rows, op.objId);
       if (!loc) throw new Error('Choice not found: ' + op.objId);

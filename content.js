@@ -1,4 +1,4 @@
-// content.js - Isolated content script bridge & UI injection
+﻿// content.js - Isolated content script bridge & UI injection
 
 (function () {
   console.log('[Worm V17 Mod] Content script loaded on:', window.location.href);
@@ -113,7 +113,13 @@
       sendResponse({ status: 'ok', metadata: detectedMetadata });
       return true;
     } else if (message.action === 'OPEN_ADD_CHOICE_MODAL') {
-      openAddChoiceModal();
+      // Popup-triggered Add: pull a fresh editor snapshot first so the dialog
+      // has current rows/choices, then open the shared choice dialog.
+      (async () => {
+        const snap = await editorRequest('EDITOR_GET_DATA');
+        if (snap && snap.snapshot) EDITOR_UI.data = snap.snapshot;
+        await openChoiceModal({});
+      })();
       sendResponse({ status: 'ok' });
       return true;
     } else if (message.action === 'INJECT_CHOICE_FROM_POPUP') {
@@ -132,151 +138,6 @@
       return true;
     }
   });
-
-  // 4. In-Page "Add Choice" Modal
-  function openAddChoiceModal(preselectedRowId = '') {
-    if (document.getElementById('worm-modal-overlay')) return;
-
-    const overlay = document.createElement('div');
-    overlay.id = 'worm-modal-overlay';
-
-    // Generate options for category dropdown
-    const rowOptionsHtml = detectedMetadata.rows.length > 0
-      ? detectedMetadata.rows.map(r => `<option value="${escapeHtml(r.id)}" ${r.id === preselectedRowId ? 'selected' : ''}>${escapeHtml(r.title)} (${r.count} choices)</option>`).join('')
-      : '<option value="">No categories detected (reload CYOA tab)</option>';
-
-    // Generate options for point type dropdown
-    const pointOptionsHtml = detectedMetadata.pointTypes.length > 0
-      ? detectedMetadata.pointTypes.map(pt => `<option value="${escapeHtml(pt.id)}">${escapeHtml(pt.name || pt.id)}</option>`).join('')
-      : '<option value="default">Points</option>';
-
-    overlay.innerHTML = `
-      <div id="worm-modal-dialog">
-        <div class="worm-modal-header">
-          <h3><span class="worm-modal-glyph">✦</span> Add Custom Choice</h3>
-          <button class="worm-modal-close-btn" id="worm-modal-close" title="Close">&times;</button>
-        </div>
-        <form id="worm-add-choice-form">
-          <div class="worm-modal-body">
-            <div class="worm-form-group">
-              <label for="worm-target-row">Destination</label>
-              <select id="worm-target-row" class="worm-form-select" required>
-                ${rowOptionsHtml}
-              </select>
-            </div>
-
-            <div class="worm-form-group">
-              <label for="worm-choice-title">Choice Title</label>
-              <input type="text" id="worm-choice-title" class="worm-form-input" placeholder="e.g. Master-Stranger Inversion" required />
-            </div>
-
-            <div class="worm-form-group">
-              <label for="worm-choice-text">Description</label>
-              <textarea id="worm-choice-text" class="worm-form-textarea" placeholder="Detailed lore, effect description, or rules for this option..."></textarea>
-            </div>
-
-            <div class="worm-form-group">
-              <label>Point Modifier</label>
-              <div class="worm-modifier-grid">
-                <div class="worm-segmented" role="group" aria-label="Effect type">
-                  <button type="button" class="worm-seg-btn is-active" data-effect="cost">− Cost</button>
-                  <button type="button" class="worm-seg-btn" data-effect="gain">+ Gain</button>
-                </div>
-                <input type="number" id="worm-point-amount" class="worm-form-input" placeholder="0" min="0" value="5" />
-              </div>
-              <select id="worm-point-type" class="worm-form-select worm-mt8">
-                ${pointOptionsHtml}
-              </select>
-            </div>
-
-            <div class="worm-form-group">
-              <label for="worm-choice-image">Image URL <span class="worm-label-soft">(optional)</span></label>
-              <input type="url" id="worm-choice-image" class="worm-form-input" placeholder="https://example.com/image.png" />
-            </div>
-          </div>
-
-          <div class="worm-modal-footer">
-            <button type="button" class="worm-btn-secondary" id="worm-modal-cancel">Cancel</button>
-            <button type="submit" class="worm-btn-primary">Add to CYOA</button>
-          </div>
-        </form>
-      </div>
-    `;
-
-    function closeModal() {
-      overlay.remove();
-    }
-
-    overlay.querySelector('#worm-modal-close').addEventListener('click', closeModal);
-    overlay.querySelector('#worm-modal-cancel').addEventListener('click', closeModal);
-    overlay.querySelectorAll('.worm-seg-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        overlay.querySelectorAll('.worm-seg-btn').forEach((b) => b.classList.toggle('is-active', b === btn));
-      });
-    });
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) closeModal();
-    });
-
-    overlay.querySelector('#worm-add-choice-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-
-      const rowId = overlay.querySelector('#worm-target-row').value;
-      const title = overlay.querySelector('#worm-choice-title').value.trim();
-      const text = overlay.querySelector('#worm-choice-text').value.trim();
-      const activeSeg = overlay.querySelector('.worm-seg-btn.is-active');
-      const effect = activeSeg ? activeSeg.dataset.effect : 'cost'; // 'cost' or 'gain'
-      const amount = Math.abs(parseInt(overlay.querySelector('#worm-point-amount').value, 10)) || 0;
-      const pointTypeId = overlay.querySelector('#worm-point-type').value;
-      const image = overlay.querySelector('#worm-choice-image').value.trim();
-
-      if (!rowId || !title) {
-        alert('Please select a category and provide a title.');
-        return;
-      }
-
-      const selectedPt = detectedMetadata.pointTypes.find(p => p.id === pointTypeId);
-      const ptName = selectedPt ? (selectedPt.name || selectedPt.id) : 'Points';
-      const ptAbbr = abbreviatePointName(ptName);
-      const isGain = effect === 'gain';
-
-      const scores = [];
-      if (pointTypeId && amount > 0) {
-        scores.push({
-          id: pointTypeId,
-          value: isGain ? String(-amount) : String(amount),
-          beforeText: isGain ? 'Gain:' : 'Cost:',
-          afterText: ptAbbr,
-          requireds: []
-        });
-      }
-
-      const newChoice = {
-        id: 'custom_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 5),
-        rowId,
-        title,
-        text,
-        image,
-        scores,
-        requireds: [],
-        addons: [],
-        groups: [],
-        isSelectableMultiple: false,
-        isNotSelectable: false,
-        isVisible: true,
-        isDefault: false,
-        isPrivateStyling: false,
-        styling: null,
-        template: 1,
-        isCustom: true
-      };
-
-      await handleInjectChoice(newChoice);
-      closeModal();
-    });
-
-    document.body.appendChild(overlay);
-  }
 
   // 5. Handle choice saving and live injection
   async function handleInjectChoice(choice) {
@@ -324,7 +185,7 @@
 
   // =========================================================================
   // 7. Interactive Editor ("Worm Forge")
-  //    Toggle button → edit mode over the live viewer. Cards are matched to
+  //    Toggle button â†’ edit mode over the live viewer. Cards are matched to
   //    store objects by unique title with an order-based fallback; the mapping
   //    lives here in the isolated world and is rebuilt after every mutation
   //    broadcast. Selection chrome is plain DOM + fixed layers.
@@ -398,7 +259,7 @@
     btn.id = 'worm-edit-toggle';
     btn.className = 'worm-editor-ui';
     btn.type = 'button';
-    btn.textContent = '✎ Edit CYOA';
+    btn.textContent = 'âœŽ Edit CYOA';
     btn.title = 'Toggle the interactive editor (Ctrl+E)';
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -431,12 +292,12 @@
     document.body.classList.toggle('worm-edit-mode', enabled);
     if (EDITOR_UI.toggleBtn) {
       EDITOR_UI.toggleBtn.classList.toggle('active', enabled);
-      EDITOR_UI.toggleBtn.textContent = enabled ? '✓ Done Editing' : '✎ Edit CYOA';
+      EDITOR_UI.toggleBtn.textContent = enabled ? 'âœ“ Done Editing' : 'âœŽ Edit CYOA';
     }
     if (enabled) {
       if (data && data.snapshot) EDITOR_UI.data = data.snapshot;
       editorEnter();
-      showToast('Editor on — click a choice to select it. Ctrl+E to exit.');
+      showToast('Editor on â€” click a choice to select it. Ctrl+E to exit.');
     } else {
       editorExit();
     }
@@ -450,8 +311,8 @@
     if (data.label) showToast(data.label);
     if (data.opType === 'deleteObjects' && Array.isArray(data.deletedIds) && data.deletedIds.length > 0) {
       editorPurgeDeletedCustomChoices(data.deletedIds);
-    } else if (data.opType === 'duplicateObject' && data.extra && data.extra.object) {
-      editorTrackDuplicate(data.extra.object);
+    } else if ((data.opType === 'duplicateObject' || data.opType === 'addObject') && data.extra && data.extra.object) {
+      editorTrackNewChoice(data.extra.object);
     }
     // Remounts settle in two steps (empty now, restore ~50ms later), so
     // re-index immediately AND after the DOM stabilizes.
@@ -487,9 +348,9 @@
     }
   }
 
-  async function editorTrackDuplicate(object) {
-    // Duplicated choices are user-created: track them like other custom
-    // choices so they persist across reloads.
+  async function editorTrackNewChoice(object) {
+    // Choices created/duplicated in the editor are user-created: track them
+    // like other custom choices so they persist across reloads.
     try {
       if (!object) return;
       const { customChoices = [] } = await chrome.storage.local.get('customChoices');
@@ -517,10 +378,10 @@
       const rowData = EDITOR_UI.data.rows[wIdx];
       if (!rowData) return;
       // The viewer renders cards in objects-array order (v-for), so POSITION is
-      // the authoritative mapping — titles are only a sanity check.
+      // the authoritative mapping â€” titles are only a sanity check.
       const cards = Array.from(wrapper.querySelectorAll(EDITOR_SEL.cardGrid + ' > .col > ' + EDITOR_SEL.card));
       if (cards.length > rowData.objects.length) {
-        console.warn('[Worm Forge] Row "' + (rowData.title || rowData.id) + '": ' + cards.length + ' cards but only ' + rowData.objects.length + ' data objects (transient remount state) — extra cards unmapped.');
+        console.warn('[Worm Forge] Row "' + (rowData.title || rowData.id) + '": ' + cards.length + ' cards but only ' + rowData.objects.length + ' data objects (transient remount state) â€” extra cards unmapped.');
       }
       cards.forEach((card, cIdx) => {
         const obj = rowData.objects[cIdx];
@@ -531,6 +392,7 @@
         }
         editorCardIndex.set(obj.id, card);
         editorElIndex.set(card, obj.id);
+        editorEnsureIdBadge(card, obj.id);
       });
     });
   }
@@ -544,6 +406,68 @@
     return null;
   }
 
+  function editorCopyText(text) {
+    return new Promise((resolve) => {
+      const done = (ok) => resolve(!!ok);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => done(true)).catch(() => done(false));
+        return;
+      }
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        done(document.execCommand('copy'));
+        ta.remove();
+      } catch (err) {
+        done(false);
+      }
+    });
+  }
+
+  // Edit mode shows each choice's data id on the card (top-right). Click = copy.
+  // The badge lives inside the (viewer-owned) card element; it is (re)created on
+  // every index pass so remounts and id remaps stay correct, and removed on exit.
+  function editorEnsureIdBadge(card, objId) {
+    if (!card || !objId) return;
+    let badge = card.querySelector(':scope > .worm-obj-id-badge');
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.className = 'worm-obj-id-badge';
+      badge.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const id = badge.dataset.objId || '';
+        const ok = await editorCopyText(id);
+        showToast(ok ? 'Choice ID copied: ' + id : 'Copy failed â€” ID: ' + id);
+      });
+      card.appendChild(badge);
+      if (getComputedStyle(card).position === 'static') {
+        card.style.position = 'relative';
+        card.dataset.wormPosRel = '1';
+      }
+    }
+    if (badge.dataset.objId !== objId) {
+      badge.dataset.objId = objId;
+      badge.textContent = objId.length > 22 ? objId.slice(0, 20) + 'â€¦' : objId;
+      badge.title = 'Choice ID â€” click to copy: ' + objId;
+    }
+  }
+
+  function editorRemoveIdBadges() {
+    document.querySelectorAll('.worm-obj-id-badge').forEach((badge) => {
+      const card = badge.parentElement;
+      badge.remove();
+      if (card && card.dataset && card.dataset.wormPosRel === '1') {
+        card.style.position = '';
+        delete card.dataset.wormPosRel;
+      }
+    });
+  }
+
   function editorEnter() {
     const layer = document.createElement('div');
     layer.id = 'worm-editor-layer';
@@ -555,14 +479,14 @@
     toolbar.className = 'worm-sel-toolbar';
     toolbar.style.display = 'none';
     toolbar.innerHTML = `
-      <button type="button" data-act="edit" title="Edit this choice">✎ Edit</button>
-      <button type="button" data-act="duplicate" title="Duplicate this choice">⧉</button>
-      <button type="button" data-act="delete" title="Delete this choice (Del)">🗑</button>`;
+      <button type="button" data-act="edit" title="Edit this choice">âœŽ Edit</button>
+      <button type="button" data-act="duplicate" title="Duplicate this choice">â§‰</button>
+      <button type="button" data-act="delete" title="Delete this choice (Del)">ðŸ—‘</button>`;
     toolbar.addEventListener('click', (e) => {
       e.stopPropagation();
       const act = e.target && e.target.dataset ? e.target.dataset.act : null;
       if (!act || !EDITOR_UI.selection) return;
-      if (act === 'edit') editorOpenEditModal(EDITOR_UI.selection.objId);
+      if (act === 'edit') openChoiceModal({ objId: EDITOR_UI.selection.objId });
       else if (act === 'duplicate') editorDuplicate(EDITOR_UI.selection.objId);
       else if (act === 'delete') editorDelete(EDITOR_UI.selection.objId);
     });
@@ -618,6 +542,7 @@
     if (EDITOR_UI.clickHandler) document.removeEventListener('click', EDITOR_UI.clickHandler, true);
     if (EDITOR_UI.keyHandler) document.removeEventListener('keydown', EDITOR_UI.keyHandler, true);
     editorRemoveRowBars();
+    editorRemoveIdBadges();
     if (EDITOR_UI.layerEl) EDITOR_UI.layerEl.remove();
     EDITOR_UI.layerEl = null;
     EDITOR_UI.selBoxEl = null;
@@ -638,11 +563,11 @@
       bar.className = 'worm-row-bar worm-editor-ui';
       const addBtn = document.createElement('button');
       addBtn.type = 'button';
-      addBtn.textContent = '＋';
+      addBtn.textContent = 'ï¼‹';
       addBtn.title = 'Add a choice to this row';
       addBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        openAddChoiceModal(rowData.id);
+        openChoiceModal({ preselectedRowId: rowData.id });
       });
       bar.appendChild(addBtn);
       header.appendChild(bar);
@@ -690,11 +615,12 @@
   function editorOnCaptureClick(e) {
     if (!EDITOR_UI.active) return;
     if (e.target.closest('.worm-editor-ui, #worm-editor-layer, #worm-modal-overlay, #worm-confirm-overlay')) return;
+    if (e.target.closest('.worm-obj-id-badge')) return; // badge click = copy ID (its own handler)
     const cardEl = e.target.closest(EDITOR_SEL.card);
     if (cardEl) {
       let objId = editorObjIdForElement(cardEl);
       if (!objId) {
-        // The card was re-created by a remount after our last reindex —
+        // The card was re-created by a remount after our last reindex â€”
         // rebuild the index on the spot and retry the lookup.
         editorIndexCards();
         objId = editorObjIdForElement(cardEl);
@@ -793,17 +719,40 @@
     });
   }
 
-  async function editorOpenEditModal(objId) {
+  // Shared choice dialog â€” used for BOTH "Edit Choice" (editor toolbar) and
+  // "Add Choice" (row ï¼‹ button). Field parity is intentional: add simply starts
+  // from a blank object and adds a Destination selector; edit additionally shows
+  // the Section Activation editor (needs the choice's id to exist first).
+  async function openChoiceModal(opts) {
+    const isAdd = !opts || !opts.objId;
+    const preselectedRowId = (opts && opts.preselectedRowId) || '';
+    let resp = null;
+    let obj;
+    if (isAdd) {
+      if (!EDITOR_UI.data) { showToast('Editor data not ready â€” reopen the editor.'); return; }
+      obj = {
+        title: '', text: '', image: '', objectWidth: '',
+        scores: [], requireds: [],
+        isNotSelectable: false, isSelectableMultiple: false,
+        numMultipleTimesPluss: 1, numMultipleTimesMinus: 0,
+        activateThisChoice: '', deactivateThisChoice: '',
+        activateOtherChoice: false, deactivateOtherChoice: false,
+        isVisible: true,
+      };
+    } else {
+      resp = await editorRequest('EDITOR_GET_OBJECT', { objId: opts.objId });
+      if (!resp || !resp.object) { showToast('Could not load that choice.'); return; }
+      obj = resp.object;
+    }
     if (document.getElementById('worm-modal-overlay')) return;
-    const resp = await editorRequest('EDITOR_GET_OBJECT', { objId });
-    if (!resp || !resp.object) { showToast('Could not load that choice.'); return; }
-    const obj = resp.object;
+    const objId = isAdd ? '' : opts.objId;
     const original = JSON.parse(JSON.stringify(obj));
     const pointTypes = (EDITOR_UI.data && EDITOR_UI.data.pointTypes) || [];
+    const allRowsList = (EDITOR_UI.data && EDITOR_UI.data.rows) || [];
     const esc = escapeHtml;
-    const isEmbeddedImage = typeof obj.image === 'string' && obj.image.startsWith('data:');
+    const isEmbeddedImage = !isAdd && typeof obj.image === 'string' && obj.image.startsWith('data:');
     const imageShown = isEmbeddedImage ? '' : (obj.image || '');
-    const rowWidth = resp.rowWidth || '';
+    const rowWidth = (resp && resp.rowWidth) || '';
     const widthOpts = (() => {
       const opts = [];
       const rowLabel = 'Row default' + (rowWidth ? ' (' + rowWidth + ')' : '');
@@ -830,21 +779,21 @@
         <div class="worm-score-edit" data-orig="${origIdx}">
           <select class="worm-form-select we-score-type">${ptOptions}</select>
           <div class="worm-segmented worm-seg-sm we-score-eff" role="group" aria-label="Effect">
-            <button type="button" class="worm-seg-btn${eff === 'cost' ? ' is-active' : ''}" data-eff="cost">−</button>
+            <button type="button" class="worm-seg-btn${eff === 'cost' ? ' is-active' : ''}" data-eff="cost">âˆ’</button>
             <button type="button" class="worm-seg-btn${eff === 'gain' ? ' is-active' : ''}" data-eff="gain">+</button>
           </div>
           <input type="number" class="worm-form-input we-score-amt" min="0" value="${amt}">
-          <button type="button" class="worm-score-remove" title="Remove modifier">×</button>
+          <button type="button" class="worm-score-remove" title="Remove modifier">Ã—</button>
         </div>`;
     };
     const scoreRowsHtml = (Array.isArray(original.scores) && original.scores.length > 0)
       ? original.scores.map((s, i) => scoreRowHtml(s, i)).join('')
       : '';
 
-    // Section activation state: rows whose visibility conditions reference
-    // this choice ({type:'id', reqId}). required=true → row shows when this
-    // choice is picked; required=false → row hides when picked.
-    const actState = (resp.activatedRows || []).map(a => {
+    // Section activation state (edit mode only): rows whose visibility
+    // conditions reference this choice ({type:'id', reqId}). required=true â†’
+    // row shows when this choice is picked; required=false â†’ row hides.
+    const actState = isAdd ? [] : (resp.activatedRows || []).map(a => {
       const requireds = a.requireds || [];
       let origIdx = -1;
       for (let i = 0; i < requireds.length; i++) {
@@ -854,19 +803,47 @@
       return { rowId: a.id, title: a.title, required: !!a.required, requireds, isNew: false };
     });
     const removedActs = [];
-    const rowsWithTerms = resp.rowsWithTerms || [];
-    const allRowsList = (EDITOR_UI.data && EDITOR_UI.data.rows) || [];
+    const rowsWithTerms = (resp && resp.rowsWithTerms) || [];
+
+    // Requirement state (both modes): {type:'id'} terms on THIS choice gating
+    // its own visibility on other choices being picked.
+    const originalRequireds = Array.isArray(original.requireds) ? original.requireds : [];
+    const reqState = originalRequireds
+      .filter(t => t && t.type === 'id')
+      .map(t => ({ term: JSON.parse(JSON.stringify(t)), required: !!t.required }));
+
+    function choiceTitleFor(id) {
+      for (const r of allRowsList) {
+        for (const o of (r.objects || [])) {
+          if (o.id === id) return o.title || id;
+        }
+      }
+      return id;
+    }
+
+    // Non-id terms of the original requireds (points/multi conditions the UI
+    // doesn't model) â€” preserved verbatim by both save paths.
+    function keptOthersForAdd() {
+      return originalRequireds.filter(t => !(t && t.type === 'id')).map(t => JSON.parse(JSON.stringify(t)));
+    }
 
     const overlay = document.createElement('div');
     overlay.id = 'worm-modal-overlay';
     overlay.innerHTML = `
       <div id="worm-modal-dialog">
         <div class="worm-modal-header">
-          <h3><span class="worm-modal-glyph">✎</span> Edit Choice</h3>
+          <h3><span class="worm-modal-glyph">âœŽ</span> ${isAdd ? 'Add Choice' : 'Edit Choice'} ${!isAdd ? `<span class="worm-id-chip" id="we-obj-id" title="Choice ID â€” click to copy">${esc(objId)}</span>` : ''}</h3>
           <button type="button" class="worm-modal-close-btn" id="we-close" title="Close">&times;</button>
         </div>
         <form id="we-form">
           <div class="worm-modal-body">
+            ${isAdd ? `
+            <div class="worm-form-group">
+              <label for="we-dest">Destination</label>
+              <select id="we-dest" class="worm-form-select">
+                ${allRowsList.map(r => `<option value="${esc(r.id)}"${r.id === preselectedRowId ? ' selected' : ''}>${esc(r.title || r.id)} (${(r.objects || []).length} choices)</option>`).join('')}
+              </select>
+            </div>` : ''}
             <div class="worm-form-group">
               <label for="we-title">Choice Title</label>
               <input type="text" id="we-title" class="worm-form-input" value="${esc(original.title || '')}" required>
@@ -889,9 +866,22 @@
             <div class="worm-form-group">
               <label>Point Modifiers</label>
               <div id="we-scores">${scoreRowsHtml}</div>
-              <div class="worm-empty-hint" id="we-scores-hint"${scoreRowsHtml ? ' hidden' : ''}>No point modifiers on this choice — use “+ Add Modifier”.</div>
+              <div class="worm-empty-hint" id="we-scores-hint"${scoreRowsHtml ? ' hidden' : ''}>No point modifiers on this choice â€” use â€œ+ Add Modifierâ€.</div>
               <button type="button" id="we-add-score" class="worm-btn-ghost-sm worm-mt8">+ Add Modifier</button>
             </div>
+            <div class="worm-form-group">
+              <label>Requirements <span class="worm-label-soft">(this choice needs/is blocked by other choices)</span></label>
+              <div id="we-req-rows"></div>
+              <div class="worm-act-add worm-mt8">
+                <select id="we-req-kind" class="worm-form-select">
+                  <option value="required">Needs a choice</option>
+                  <option value="incompatible">Blocked by a choice</option>
+                </select>
+                <select id="we-req-choice" class="worm-form-select"></select>
+                <button type="button" id="we-req-add" class="worm-btn-ghost-sm">Add</button>
+              </div>
+            </div>
+            ${!isAdd ? `
             <div class="worm-form-group">
               <label>Section Activation <span class="worm-label-soft">(rows gated by this choice)</span></label>
               <div id="we-act-rows"></div>
@@ -903,11 +893,10 @@
                 </select>
                 <button type="button" id="we-act-add" class="worm-btn-ghost-sm">Add</button>
               </div>
-            </div>
+            </div>` : ''}
             <div class="worm-form-group">
               <label>Behavior</label>
               <div class="worm-check-grid">
-                <label class="worm-check"><input type="checkbox" id="we-visible"${original.isVisible === false ? '' : ' checked'}><span>Visible</span></label>
                 <label class="worm-check"><input type="checkbox" id="we-notsel"${original.isNotSelectable ? ' checked' : ''}><span>Not selectable</span></label>
                 <label class="worm-check"><input type="checkbox" id="we-multi"${original.isSelectableMultiple ? ' checked' : ''}><span>Pick multiple times</span></label>
               </div>
@@ -924,11 +913,11 @@
               <div class="worm-form-grid2 worm-mt8">
                 <div class="worm-form-group">
                   <label for="we-activatethis">Activates choice ids (comma-separated)</label>
-                  <input type="text" id="we-activatethis" class="worm-form-input" value="${esc(original.activateThisChoice || '')}" placeholder="id1,id2,…">
+                  <input type="text" id="we-activatethis" class="worm-form-input" value="${esc(original.activateThisChoice || '')}" placeholder="id1,id2,â€¦">
                 </div>
                 <div class="worm-form-group">
                   <label for="we-deactivatethis">Deactivates choice ids (comma-separated)</label>
-                  <input type="text" id="we-deactivatethis" class="worm-form-input" value="${esc(original.deactivateThisChoice || '')}" placeholder="id1,id2,…">
+                  <input type="text" id="we-deactivatethis" class="worm-form-input" value="${esc(original.deactivateThisChoice || '')}" placeholder="id1,id2,â€¦">
                 </div>
               </div>
               <div class="worm-check-grid worm-mt8">
@@ -936,19 +925,33 @@
                 <label class="worm-check"><input type="checkbox" id="we-deactother"${original.deactivateOtherChoice ? ' checked' : ''}><span>When picked, deactivate the id above</span></label>
               </div>
             </div>
-            <div class="worm-form-group worm-narrow">
-              <label for="we-template">Template #</label>
-              <input type="number" id="we-template" class="worm-form-input" min="1" value="${esc(String(original.template ?? 1))}">
-            </div>
           </div>
           <div class="worm-modal-footer">
             <button type="button" class="worm-btn-ghost-sm" id="we-reset">Reset</button>
             <span class="worm-footer-spacer"></span>
             <button type="button" class="worm-btn-secondary" id="we-cancel">Cancel</button>
-            <button type="submit" class="worm-btn-primary">Save Changes</button>
+            <button type="submit" class="worm-btn-primary">${isAdd ? 'Add to CYOA' : 'Save Changes'}</button>
           </div>
         </form>
       </div>`;
+
+    const idChip = overlay.querySelector('#we-obj-id');
+    if (idChip) idChip.addEventListener('click', async () => {
+      const ok = await editorCopyText(objId);
+      showToast(ok ? 'Choice ID copied: ' + objId : 'Copy failed â€” ID: ' + objId);
+    });
+
+    overlay.querySelector('#we-req-add').addEventListener('click', () => {
+      const kindSel = overlay.querySelector('#we-req-kind');
+      const choiceSel = overlay.querySelector('#we-req-choice');
+      const reqId = choiceSel.value;
+      if (!reqId || reqState.some(e => e.term.reqId === reqId)) return;
+      reqState.push({ term: buildRequirementTerm(kindSel.value === 'required'), required: kindSel.value === 'required' });
+      const term = reqState[reqState.length - 1].term;
+      term.reqId = reqId;
+      renderReqRows();
+      renderReqChoiceSelect();
+    });
 
     function closeModal() { overlay.remove(); }
 
@@ -969,7 +972,7 @@
       const amt = Math.abs(parseInt(row.querySelector('.we-score-amt').value, 10)) || 0;
       const pt = pointTypes.find(p => p.id === ptId);
       const abbr = abbreviatePointName(pt ? (pt.name || pt.id) : 'Points');
-      // Preserve unknown/original fields (type, showScore, …) and overlay only
+      // Preserve unknown/original fields (type, showScore, â€¦) and overlay only
       // the UI-editable ones.
       return {
         ...origScore,
@@ -999,8 +1002,15 @@
       const scores = scoreRows.map(scoreRowFromUi);
       if (JSON.stringify(scores) !== JSON.stringify(original.scores || [])) patch.scores = scores;
 
-      const visible = overlay.querySelector('#we-visible').checked;
-      if (visible !== (original.isVisible !== false)) patch.isVisible = visible;
+      // Requirements: rebuild this choice's {type:'id'} terms. Non-id terms are
+      // kept untouched; id terms are diffed so unchanged entries emit nothing.
+      const nextIds = reqState.map(e => e.term);
+      const keptOthers = (Array.isArray(original.requireds) ? original.requireds : [])
+        .filter(t => !(t && t.type === 'id'));
+      const nextRequireds = keptOthers.concat(nextIds);
+      if (stableStringify(nextRequireds) !== stableStringify(originalRequireds)) {
+        patch.requireds = nextRequireds;
+      }
       const notSel = overlay.querySelector('#we-notsel').checked;
       if (notSel !== !!original.isNotSelectable) patch.isNotSelectable = notSel;
       const multi = overlay.querySelector('#we-multi').checked;
@@ -1021,8 +1031,6 @@
       const deactThis = overlay.querySelector('#we-deactivatethis').value.trim();
       if (deactThis !== (original.deactivateThisChoice || '')) patch.deactivateThisChoice = deactThis;
 
-      const tpl = parseInt(overlay.querySelector('#we-template').value, 10) || 1;
-      if (tpl !== (Number(original.template) || 1)) patch.template = tpl;
       return patch;
     }
 
@@ -1078,7 +1086,7 @@
         rm.type = 'button';
         rm.className = 'worm-act-remove';
         rm.title = 'Remove this condition';
-        rm.textContent = '×';
+        rm.textContent = 'Ã—';
         rm.addEventListener('click', () => {
           const i = actState.indexOf(a);
           if (i >= 0) {
@@ -1106,6 +1114,76 @@
       sel.innerHTML = options || '<option value="">No rows available</option>';
     }
 
+    // Requirements section: lists this choice's {type:'id'} terms and manages
+    // additions via the kind/choice dropdown pair.
+    function renderReqRows() {
+      const wrap = overlay.querySelector('#we-req-rows');
+      if (!wrap) return;
+      wrap.innerHTML = '';
+      if (reqState.length === 0) {
+        const hint = document.createElement('div');
+        hint.className = 'worm-empty-hint';
+        hint.textContent = 'No requirements on this choice.';
+        wrap.appendChild(hint);
+        return;
+      }
+      reqState.forEach((entry, idx) => {
+        const row = document.createElement('div');
+        row.className = 'worm-act-row';
+        const name = document.createElement('span');
+        name.className = 'worm-act-name';
+        name.textContent = choiceTitleFor(entry.term.reqId);
+        const kind = document.createElement('span');
+        kind.className = 'worm-act-kind' + (entry.required ? '' : ' off');
+        kind.textContent = entry.required ? 'needs' : 'blocked by';
+        const rm = document.createElement('button');
+        rm.type = 'button';
+        rm.className = 'worm-act-remove';
+        rm.title = 'Remove this requirement';
+        rm.textContent = 'Ã—';
+        rm.addEventListener('click', () => {
+          reqState.splice(idx, 1);
+          renderReqRows();
+        });
+        row.appendChild(name);
+        row.appendChild(kind);
+        row.appendChild(rm);
+        wrap.appendChild(row);
+      });
+    }
+
+    function renderReqChoiceSelect() {
+      const sel = overlay.querySelector('#we-req-choice');
+      if (!sel) return;
+      const used = new Set(reqState.map(e => e.term.reqId));
+      const options = allRowsList
+        .flatMap(r => (r.objects || []))
+        .filter(o => o.id && !used.has(o.id))
+        .map(o => `<option value="${esc(o.id)}">${esc((o.title || o.id) + ' Â· ' + o.id)}</option>`)
+        .join('');
+      sel.innerHTML = options || '<option value="">No other choices available</option>';
+    }
+
+    function buildRequirementTerm(required) {
+      // Mirrors the project's real choice-level {type:'id'} ConditionTerm shape
+      // (verified against project.json data): showRequired=true + beforeText
+      // "Incompatible:" for blocking terms; false + "Required:" otherwise.
+      return {
+        id: '',
+        type: 'id',
+        required: !!required,
+        reqId: '',
+        reqId1: '', reqId2: '', reqId3: '',
+        reqPoints: 0,
+        operator: '',
+        orRequired: [{ req: '' }, { req: '' }, { req: '' }, { req: '' }],
+        requireds: [],
+        showRequired: !required,
+        beforeText: required ? 'Required:' : 'Incompatible:',
+        afterText: '',
+      };
+    }
+
     function stableStringify(value) {
       // Key-order-insensitive JSON for structural comparison.
       return JSON.stringify(value, (key, val) => {
@@ -1125,7 +1203,7 @@
         }
         return rowMap.get(rowId);
       };
-      // Removals first, then (re-)additions — so a remove+re-add of the same
+      // Removals first, then (re-)additions â€” so a remove+re-add of the same
       // row nets out to a single present term.
       for (const r of removedActs) {
         const entry = ensure(r.rowId, r.requireds);
@@ -1135,7 +1213,7 @@
         const entry = ensure(a.rowId, a.requireds);
         const idx = entry.requireds.findIndex(t => t && t.type === 'id' && t.reqId === objId);
         if (idx >= 0) {
-          // Already gated by this choice — only the required flag can differ;
+          // Already gated by this choice â€” only the required flag can differ;
           // touch nothing else so unchanged rows produce no op.
           if (!!entry.requireds[idx].required !== !!a.required) {
             entry.requireds[idx] = { ...entry.requireds[idx], required: !!a.required };
@@ -1176,7 +1254,8 @@
       });
       updateScoreHint();
     });
-    overlay.querySelector('#we-act-add').addEventListener('click', () => {
+    const actAddBtn = overlay.querySelector('#we-act-add');
+    if (actAddBtn) actAddBtn.addEventListener('click', () => {
       const sel = overlay.querySelector('#we-act-row');
       const kind = overlay.querySelector('#we-act-kind').value;
       const rowId = sel.value;
@@ -1196,8 +1275,12 @@
     overlay.querySelector('#we-multi').addEventListener('change', (e) => {
       overlay.querySelector('#we-multi-limits').hidden = !e.target.checked;
     });
-    renderActRows();
-    renderActRowSelect();
+    if (actAddBtn) {
+      renderActRows();
+      renderActRowSelect();
+    }
+    renderReqRows();
+    renderReqChoiceSelect();
     updateScoreHint();
     overlay.querySelector('#we-reset').addEventListener('click', () => {
       overlay.querySelector('#we-title').value = original.title || '';
@@ -1216,7 +1299,6 @@
         });
       });
       updateScoreHint();
-      overlay.querySelector('#we-visible').checked = original.isVisible !== false;
       overlay.querySelector('#we-notsel').checked = !!original.isNotSelectable;
       overlay.querySelector('#we-multi').checked = !!original.isSelectableMultiple;
       overlay.querySelector('#we-multi-limits').hidden = !original.isSelectableMultiple;
@@ -1226,10 +1308,49 @@
       overlay.querySelector('#we-deactivatethis').value = original.deactivateThisChoice || '';
       overlay.querySelector('#we-actother').checked = !!original.activateOtherChoice;
       overlay.querySelector('#we-deactother').checked = !!original.deactivateOtherChoice;
-      overlay.querySelector('#we-template').value = String(original.template ?? 1);
     });
     overlay.querySelector('#we-form').addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (isAdd) {
+        // ---- Add path: build a full new choice from the dialog ----
+        const rowId = overlay.querySelector('#we-dest').value;
+        const title = overlay.querySelector('#we-title').value.trim();
+        if (!rowId || !title) return;
+        const newId = 'custom_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+        const newChoice = {
+          ...deepCloneValue(original),
+          id: newId,
+          rowId,
+          title,
+          text: overlay.querySelector('#we-text').value,
+          isCustom: true,
+          template: 1,
+        };
+        const image = overlay.querySelector('#we-image').value.trim();
+        newChoice.image = image;
+        newChoice.imageIsUrl = /^https?:\/\//i.test(image);
+        newChoice.objectWidth = overlay.querySelector('#we-width').value;
+        const scoreRows = Array.from(overlay.querySelectorAll('.worm-score-edit'));
+        newChoice.scores = scoreRows.map(scoreRowFromUi);
+        const notSel = overlay.querySelector('#we-notsel').checked;
+        newChoice.isNotSelectable = notSel;
+        const multi = overlay.querySelector('#we-multi').checked;
+        newChoice.isSelectableMultiple = multi;
+        newChoice.numMultipleTimesPluss = multi ? String(parseInt(overlay.querySelector('#we-maxpicks').value, 10) || 1) : '1';
+        newChoice.numMultipleTimesMinus = multi ? String(parseInt(overlay.querySelector('#we-minpicks').value, 10) || 0) : '0';
+        newChoice.activateThisChoice = overlay.querySelector('#we-activatethis').value.trim();
+        newChoice.deactivateThisChoice = overlay.querySelector('#we-deactivatethis').value.trim();
+        newChoice.activateOtherChoice = overlay.querySelector('#we-actother').checked;
+        newChoice.deactivateOtherChoice = overlay.querySelector('#we-deactother').checked;
+        newChoice.requireds = keptOthersForAdd().concat(reqState.map(en => en.term));
+        closeModal();
+        await editorRequest('EDITOR_OP', {
+          op: { type: 'addObject', rowId, index: -1, object: newChoice },
+        });
+        showToast('Added â€œ' + title + 'â€');
+        return;
+      }
+      // ---- Edit path (unchanged semantics) ----
       const patch = buildPatch();
       const rowOps = buildRowOps();
       if (Object.keys(patch).length > 0) {
@@ -1246,7 +1367,7 @@
 
   ensureEditorToggle();
 
-  // Abbreviates a point type name: "Shard Points" → "SP", "Character Points" → "CP"
+  // Abbreviates a point type name: "Shard Points" â†’ "SP", "Character Points" â†’ "CP"
   function abbreviatePointName(name) {
     if (!name) return 'Pts';
     const words = name.trim().split(/\s+/);
