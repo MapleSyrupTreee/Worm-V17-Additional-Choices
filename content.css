@@ -494,6 +494,52 @@ body.worm-edit-mode .project-obj .obj-controls {
 .worm-sel-toolbar button[data-act="delete"]:hover {
   color: var(--wv-bad);
 }
+.worm-sel-toolbar button[data-act="drag"] {
+  cursor: grab;
+  letter-spacing: 1px;
+  touch-action: none;
+}
+.worm-sel-toolbar button[data-act="drag"]:active {
+  cursor: grabbing;
+}
+
+/* Drag & drop (Phase 3) */
+.worm-drag-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 2147483005;
+  margin: 0;
+  pointer-events: none;
+  opacity: 0.92;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.6), 0 0 0 2px var(--wv-accent);
+  border-radius: 10px;
+  background: var(--wv-bg-2);
+  will-change: transform;
+}
+.worm-drag-ghost .worm-obj-id-badge {
+  display: none;
+}
+.worm-drop-indicator {
+  position: fixed;
+  width: 4px;
+  border-radius: 3px;
+  background: var(--wv-accent-bright);
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.9);
+  pointer-events: none;
+  display: none;
+  z-index: 2147483004;
+}
+.worm-drop-row-hint {
+  outline: 2px dashed rgba(139, 92, 246, 0.55);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+body.worm-dragging,
+body.worm-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
 
 /* Per-row controls */
 body.worm-edit-mode .row-header {

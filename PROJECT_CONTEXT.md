@@ -182,7 +182,15 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
   with .dev/fix-mojibake.js (strict per-run cp1252→UTF-8 map-back, 41 replacements in content.js
   only — every other file verified clean). LESSON: never round-trip source files through
   PowerShell text cmdlets; use the editor tool. .dev/check-glyphs.js asserts all glyphs.
-  Remaining phases: P3 drag & drop, P4 row dialogs, P5 overlay persistence, P6 polish.
+  0.2.13 — Phase 3 drag & drop (Task 7, USER-VERIFIED): ⠿ handle on the selection toolbar
+  starts a pointer-capture drag; rAF loop drives a transform-only ghost clone, insertion
+  indicator + dashed row hint (per-frame getBoundingClientRect — scroll-immune), midpoint
+  hit-testing with nearest-card fallback (wrapped grids), viewport-edge auto-scroll, Esc
+  cancels, hidden rows excluded, external EDITOR_DATA_CHANGED aborts the session. Drop emits
+  moveObject with the after-removal index (same-row rightward moves use visualIndex−1; same
+  -slot drops are no-ops); selection follows the card via keep-restore; moveObject toast now
+  names the destination row. Phase 4 skipped by user decision — engine row ops remain but
+  UI-less. Remaining: P5 overlay persistence, P6 polish (0.3.0).
 - 0.2.5 fixes (user feedback on the Meta button): Card Width now shows "(Row default)" when the
   object inherits the row width (objectWidth '' is the COMMON case — 14k of 14.3k objects) and
   never silently overwrites; phantom modifier row removed (empty scores = empty editor + hint);

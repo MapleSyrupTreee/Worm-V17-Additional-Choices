@@ -531,6 +531,7 @@
       if (!loc) throw new Error('Choice not found: ' + op.objId);
       const targetIdx = findRowIndex(data.rows, op.toRowId);
       if (targetIdx < 0) throw new Error('Target row not found: ' + op.toRowId);
+      const destTitle = data.rows[targetIdx].title || op.toRowId;
       const originalRowId = loc.row.id;
       const originalIndex = loc.objIdx;
 
@@ -547,7 +548,9 @@
         rows: newRows,
         touched,
         remount: true,
-        label: 'Moved “' + (loc.obj.title || op.objId) + '”',
+        label: originalRowId === op.toRowId
+          ? 'Moved “' + (loc.obj.title || op.objId) + '”'
+          : 'Moved “' + (loc.obj.title || op.objId) + '” to “' + destTitle + '”',
         inverse: { type: 'moveObject', objId: op.objId, toRowId: originalRowId, index: originalIndex },
       };
     },

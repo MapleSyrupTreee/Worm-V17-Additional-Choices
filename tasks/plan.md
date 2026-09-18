@@ -98,10 +98,14 @@ and is persisted as a lightweight overlay so edits survive page reloads via the 
 ### Checkpoint: full CRUD on choices works live.
 
 ### Phase 3 — Drag & drop
-- [ ] **Task 7: Pointer drag** (handle on toolbar; ghost; insertion indicator; within-row reorder
+- [x] **Task 7: Pointer drag** (handle on toolbar; ghost; insertion indicator; within-row reorder
       and cross-row move; drop → moveObject; scroll-while-dragging near edges).
+      *Done in 0.2.13 — ⠿ handle on the selection toolbar, pointer-capture drag, transform-only
+      ghost, midpoint hit-testing with nearest-card fallback (wrapped grids), viewport-edge
+      auto-scroll, Esc cancels, no-op detection, after-removal index adjustment, toast label
+      includes destination row. USER-VERIFIED in the live viewer.*
 
-### Phase 4 — Row management
+### Phase 4 — Row management (SKIPPED by user decision — row dialogs/reorder not wanted for now)
 - [ ] **Task 8: Row controls** (edit row dialog, add choice, delete row w/ confirm, move row,
       add row; new rows default width copied from the row above).
 
@@ -150,8 +154,9 @@ and is persisted as a lightweight overlay so edits survive page reloads via the 
   pointer-events, user-reported) → `8fce187` + `b898be3` (positional mapping + click
   self-heal, user-reported) → `ec9c720` (post-step-2 broadcast, user-reported) → `620ea65`
   (0.2.5 dialog fixes, user-reported) → `620ea65..ec9c720` verified by user.
-- **REMAINING**: P3 drag & drop, P4 row dialogs (edit/delete/move/re-add rows), P5 overlay
-  persistence + popup export/import integration, P6 polish → target minor bump 0.3.0.
+- **REMAINING**: P5 overlay persistence + popup export/import integration, P6 polish → target
+  minor bump 0.3.0. (Phase 4 row management SKIPPED by user decision; its `addRow`/`updateRow`/
+  `deleteRow`/`moveRow` engine ops remain implemented and unused.)
 - Testing harness notes: see PROJECT_CONTEXT §11.
 - **0.2.10 polish (user request)**: edit mode shows each choice's data id as a click-to-copy
   badge at the card's top-right (`.worm-obj-id-badge`, created on every index pass, removed on

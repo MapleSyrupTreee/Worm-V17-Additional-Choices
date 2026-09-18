@@ -206,6 +206,7 @@
     rowBars: [],
     observer: null,
     observerTimer: 0,
+    dragState: null,   // active drag & drop session (Phase 3)
   };
   const editorCardIndex = new Map();  // objId -> card element
   const editorElIndex = new Map();    // card element -> objId
@@ -305,6 +306,7 @@
 
   function editorHandleDataChanged(data) {
     if (!data) return;
+    if (EDITOR_UI.dragState) editorEndDrag(false); // card geometry is about to change
     if (data.snapshot && EDITOR_UI.active) EDITOR_UI.data = data.snapshot;
     if (!EDITOR_UI.active) return;
     const keep = EDITOR_UI.selection && EDITOR_UI.selection.objId;
@@ -481,6 +483,7 @@
     toolbar.innerHTML = `
       <button type="button" data-act="edit" title="Edit this choice">✎ Edit</button>
       <button type="button" data-act="duplicate" title="Duplicate this choice">⧉</button>
+      <button type="button" data-act="drag" class="worm-drag-handle" title="Drag to move this choice — hold, move, release">⠿</button>
       <button type="button" data-act="delete" title="Delete this choice (Del)">🗑</button>`;
     toolbar.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -489,6 +492,14 @@
       if (act === 'edit') openChoiceModal({ objId: EDITOR_UI.selection.objId });
       else if (act === 'duplicate') editorDuplicate(EDITOR_UI.selection.objId);
       else if (act === 'delete') editorDelete(EDITOR_UI.selection.objId);
+      // 'drag' is handled via pointer events, not click.
+    });
+    toolbar.addEventListener('pointerdown', (e) => {
+      const act = e.target && e.target.dataset ? e.target.dataset.act : null;
+      if (act !== 'drag' || !EDITOR_UI.selection) return;
+      e.preventDefault();
+      e.stopPropagation();
+      editorBeginDrag(e);
     });
     layer.appendChild(selBox);
     layer.appendChild(toolbar);
@@ -539,6 +550,7 @@
     if (EDITOR_UI.rafId) cancelAnimationFrame(EDITOR_UI.rafId);
     if (EDITOR_UI.observer) { EDITOR_UI.observer.disconnect(); EDITOR_UI.observer = null; }
     clearTimeout(EDITOR_UI.observerTimer);
+    if (EDITOR_UI.dragState) editorEndDrag(false);
     if (EDITOR_UI.clickHandler) document.removeEventListener('click', EDITOR_UI.clickHandler, true);
     if (EDITOR_UI.keyHandler) document.removeEventListener('keydown', EDITOR_UI.keyHandler, true);
     editorRemoveRowBars();
@@ -612,6 +624,192 @@
     tb.style.top = (above ? r.top - 44 : r.bottom + 8) + 'px';
   }
 
+  // ==========================================================================
+  // Drag & drop (Phase 3): pointer-based move of the selected choice.
+  // Press ⠿ on the selection toolbar → a ghost of the card follows the pointer
+  // (transform-only, layout-free), a purple insertion indicator shows the drop
+  // slot via midpoint hit-testing between cards, edges auto-scroll while
+  // dragging, Esc cancels. Drop emits moveObject whose index contract is the
+  // insertion position AFTER removal from the source row.
+  // ==========================================================================
+  function editorBeginDrag(e) {
+    if (EDITOR_UI.dragState) return;
+    if (document.getElementById('worm-modal-overlay') || document.getElementById('worm-confirm-overlay')) return;
+    const objId = EDITOR_UI.selection.objId;
+    const card = editorCardIndex.get(objId);
+    if (!card || !card.isConnected) return;
+    const rect = card.getBoundingClientRect();
+    const ghost = card.cloneNode(true);
+    ghost.querySelectorAll('.worm-obj-id-badge').forEach((b) => b.remove());
+    ghost.classList.add('worm-drag-ghost');
+    ghost.style.width = rect.width + 'px';
+    EDITOR_UI.layerEl.appendChild(ghost);
+    const indicator = document.createElement('div');
+    indicator.className = 'worm-drop-indicator';
+    EDITOR_UI.layerEl.appendChild(indicator);
+    document.body.classList.add('worm-dragging');
+    const state = {
+      objId,
+      ghost,
+      indicator,
+      hintRow: null,
+      pointerId: e.pointerId,
+      offsetX: e.clientX - rect.left,
+      offsetY: e.clientY - rect.top,
+      lastX: e.clientX,
+      lastY: e.clientY,
+      startX: e.clientX,
+      startY: e.clientY,
+      moved: false,
+      target: null,
+      raf: 0,
+      onMove: null, onUp: null, onKey: null,
+    };
+    EDITOR_UI.dragState = state;
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* capture optional */ }
+    state.onMove = (ev) => {
+      state.lastX = ev.clientX;
+      state.lastY = ev.clientY;
+      if (Math.abs(ev.clientX - state.startX) + Math.abs(ev.clientY - state.startY) > 3) state.moved = true;
+    };
+    state.onUp = () => editorEndDrag(true);
+    state.onKey = (ev) => {
+      if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); editorEndDrag(false); }
+    };
+    window.addEventListener('pointermove', state.onMove, true);
+    window.addEventListener('pointerup', state.onUp, true);
+    window.addEventListener('pointercancel', state.onUp, true);
+    window.addEventListener('keydown', state.onKey, true);
+    const frame = () => {
+      if (EDITOR_UI.dragState !== state) return;
+      editorDragFrame(state);
+      state.raf = requestAnimationFrame(frame);
+    };
+    state.raf = requestAnimationFrame(frame);
+  }
+
+  function editorDragFrame(state) {
+    // Auto-scroll near viewport edges (rate scales with edge proximity).
+    const edge = 28;
+    let scrollDy = 0;
+    if (state.lastY < edge) scrollDy = -Math.ceil((edge - state.lastY) * 0.6);
+    else if (state.lastY > window.innerHeight - edge) scrollDy = Math.ceil((state.lastY - (window.innerHeight - edge)) * 0.6);
+    if (scrollDy) window.scrollBy(0, scrollDy);
+    // Ghost follows the pointer via transform (never affects layout).
+    state.ghost.style.transform = 'translate(' + (state.lastX - state.offsetX) + 'px, ' + (state.lastY - state.offsetY) + 'px) scale(1.03) rotate(1.2deg)';
+    // Insertion point hit-test.
+    const hit = editorDragHitTest(state.lastX, state.lastY, state.objId);
+    state.target = hit;
+    if (hit) {
+      state.indicator.style.display = 'block';
+      state.indicator.style.left = hit.ix + 'px';
+      state.indicator.style.top = hit.iy + 'px';
+      state.indicator.style.height = hit.ih + 'px';
+      if (state.hintRow !== hit.rowInner) {
+        if (state.hintRow) state.hintRow.classList.remove('worm-drop-row-hint');
+        if (hit.rowInner) hit.rowInner.classList.add('worm-drop-row-hint');
+        state.hintRow = hit.rowInner;
+      }
+    } else {
+      state.indicator.style.display = 'none';
+      if (state.hintRow) { state.hintRow.classList.remove('worm-drop-row-hint'); state.hintRow = null; }
+    }
+  }
+
+  function editorDragHitTest(x, y, objId) {
+    const wrappers = document.querySelectorAll(EDITOR_SEL.rowWrapper);
+    let best = null;
+    wrappers.forEach((wrapper) => {
+      const rowInner = wrapper.querySelector('.project-row');
+      if (!rowInner || rowInner.classList.contains('hidden')) return;
+      const rect = wrapper.getBoundingClientRect();
+      if (rect.height <= 0 || rect.bottom < -80 || rect.top > window.innerHeight + 80) return;
+      const dy = y < rect.top ? rect.top - y : (y > rect.bottom ? y - rect.bottom : 0);
+      if (dy > 140) return;
+      const cards = Array.from(wrapper.querySelectorAll(EDITOR_SEL.cardGrid + ' > .col > ' + EDITOR_SEL.card));
+      let candidate = null;
+      if (cards.length === 0) {
+        const grid = wrapper.querySelector(EDITOR_SEL.cardGrid) || rowInner;
+        const gridRect = grid.getBoundingClientRect();
+        candidate = {
+          rowWrapper: wrapper, rowInner,
+          visualIndex: 0,
+          ix: gridRect.left + 6,
+          iy: gridRect.top + 4,
+          ih: Math.max(48, Math.min(gridRect.height - 8, 160)),
+          score: dy,
+        };
+      } else {
+        // Nearest card by center distance (robust for wrapped grids).
+        let nearest = null;
+        let nearestDist = Infinity;
+        cards.forEach((c) => {
+          const cr = c.getBoundingClientRect();
+          const d = Math.hypot(x - (cr.left + cr.width / 2), y - (cr.top + cr.height / 2));
+          if (d < nearestDist) { nearestDist = d; nearest = { card: c, rect: cr }; }
+        });
+        if (!nearest) return;
+        const nearestIdx = cards.indexOf(nearest.card);
+        const insertBefore = x < nearest.rect.left + nearest.rect.width / 2;
+        let visualIndex = nearestIdx + (insertBefore ? 0 : 1);
+        if (visualIndex < 0) visualIndex = 0;
+        if (visualIndex > cards.length) visualIndex = cards.length;
+        const gap = 9;
+        candidate = {
+          rowWrapper: wrapper, rowInner,
+          visualIndex,
+          ix: insertBefore ? nearest.rect.left - gap : nearest.rect.right + gap,
+          iy: nearest.rect.top + 2,
+          ih: nearest.rect.height - 4,
+          score: dy + nearestDist * 0.001,
+        };
+      }
+      if (!best || candidate.score < best.score) best = candidate;
+    });
+    if (!best) return null;
+    // Resolve the target row positionally (DOM wrapper order == data row order).
+    const wIdx = Array.prototype.indexOf.call(wrappers, best.rowWrapper);
+    const rowData = EDITOR_UI.data ? EDITOR_UI.data.rows[wIdx] : null;
+    if (!rowData) return null;
+    // Locate the dragged object's source position for the after-removal
+    // contract (and same-row no-op detection).
+    let srcRow = null;
+    let srcObjIdx = -1;
+    EDITOR_UI.data.rows.forEach((r) => {
+      if (srcObjIdx >= 0) return;
+      const oi = (r.objects || []).findIndex((o) => o.id === objId);
+      if (oi >= 0) { srcRow = r; srcObjIdx = oi; }
+    });
+    let index = best.visualIndex;
+    let noop = false;
+    if (srcRow && srcRow.id === rowData.id) {
+      if (best.visualIndex > srcObjIdx) index = best.visualIndex - 1;
+      if (index === srcObjIdx) noop = true;
+    }
+    return { rowId: rowData.id, rowInner: best.rowInner, index, noop, ix: best.ix, iy: best.iy, ih: best.ih };
+  }
+
+  function editorEndDrag(commit) {
+    const state = EDITOR_UI.dragState;
+    if (!state) return;
+    EDITOR_UI.dragState = null;
+    cancelAnimationFrame(state.raf);
+    window.removeEventListener('pointermove', state.onMove, true);
+    window.removeEventListener('pointerup', state.onUp, true);
+    window.removeEventListener('pointercancel', state.onUp, true);
+    window.removeEventListener('keydown', state.onKey, true);
+    state.ghost.remove();
+    state.indicator.remove();
+    if (state.hintRow) state.hintRow.classList.remove('worm-drop-row-hint');
+    document.body.classList.remove('worm-dragging');
+    const target = commit ? state.target : null;
+    if (target && !target.noop && target.rowId) {
+      editorRequest('EDITOR_OP', {
+        op: { type: 'moveObject', objId: state.objId, toRowId: target.rowId, index: target.index },
+      });
+    }
+  }
+
   function editorOnCaptureClick(e) {
     if (!EDITOR_UI.active) return;
     if (e.target.closest('.worm-editor-ui, #worm-editor-layer, #worm-modal-overlay, #worm-confirm-overlay')) return;
@@ -652,6 +850,7 @@
 
   function editorOnKeyDown(e) {
     if (!EDITOR_UI.active) return;
+    if (EDITOR_UI.dragState) return; // drag session handles its own keys (Esc)
     const tag = (e.target && e.target.tagName) || '';
     const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable);
     if (e.key === 'Escape') {
