@@ -478,9 +478,9 @@
         let choice = normalizeChoice(raw, data.pointTypes || []);
         // Layer consistency: the fetch-interceptor path bakes customs first and
         // applies editorOverlay.objects[id] patches second. Live re-injection
-        // (SYNC_CUSTOM_CHOICES after a popup status ping, single-choice adds,
-        // the store-hook fallback) must reproduce that ordering, or a stale
-        // saved copy would clobber editor edits (scores, requireds, width…).
+        // (SYNC_CUSTOM_CHOICES, single-choice adds, the store-hook fallback)
+        // must reproduce that ordering, or a stale saved copy would clobber
+        // editor edits (scores, requireds, width…).
         const ovlPatch = editorOverlay && editorOverlay.objects ? editorOverlay.objects[choice.id] : null;
         if (ovlPatch) choice = { ...choice, ...cloneValue(ovlPatch) };
         const origRow = rows.find(r => r.id === choice.rowId);
@@ -585,22 +585,13 @@
   const editorUndoStack = [];
   const editorRedoStack = [];
   let editorReqCounter = 0;
-  // Staged editing: while the editor is open, ops apply to an in-memory clone
-  // of file.data instead of the live store — no remounts, no visual refresh
-  // mid-edit. "Done Editing" commits every touched row in a single pass.
-  let stagedMode = false;             // staged (clone) vs live editing
-  let stagedData = null;              // cloned file.data while editing
-  let stagedTouchedRows = new Set();  // row ids to remount on commit
 
   function getEditorCtx() {
     const store = findPiniaProjectStore();
     if (!store) return null;
     const stateVal = store.store;
     if (!stateVal || stateVal.status !== 'loaded' || !stateVal.file?.data || !Array.isArray(stateVal.file.data.rows)) return null;
-    if (editorMode && stagedData) {
-      return { store, stateVal, data: stagedData, rows: stagedData.rows, staged: true };
-    }
-    return { store, stateVal, data: stateVal.file.data, rows: stateVal.file.data.rows, staged: false };
+    return { store, stateVal, data: stateVal.file.data, rows: stateVal.file.data.rows };
   }
 
   function stateWithRows(stateVal, rows) {
@@ -921,15 +912,7 @@
       }
     };
 
-    if (ctx.staged) {
-      // Staged mode: mutate the clone, remember the touched rows for the
-      // single commit remount, and broadcast the staged snapshot. The live
-      // store is NOT written — the page stays visually untouched until Done.
-      stagedData = { ...ctx.data, rows: result.rows };
-      result.touched.forEach(id => stagedTouchedRows.add(id));
-      if (result.label) console.log('[Worm V17 Mod] Staged: ' + result.label);
-      broadcast();
-    } else if (result.remount && result.touched.length > 0) {
+    if (result.remount && result.touched.length > 0) {
       editorLastRemountAt = Date.now();
       const restoreMap = new Map();
       const emptiedMap = new Map();
@@ -956,51 +939,6 @@
     }
 
     return { ok: true, label: result.label || '' };
-  }
-
-  // Single commit for the whole editing session: swap the staged rows into the
-  // live store in one pass. Row order/membership changes (moveRow, addRow,
-  // deleteRow, restoreRow) come along via the full staged rows list; untouched
-  // rows keep their live object references so nothing else re-renders.
-  // Existing touched rows still go through the two-step CollectionLoader
-  // remount — once, at the end, instead of after every single edit.
-  function commitStagedEdits() {
-    const staged = stagedData;
-    const touched = Array.from(stagedTouchedRows);
-    stagedData = null;
-    stagedTouchedRows.clear();
-    if (!staged || touched.length === 0) return;
-
-    const store = findPiniaProjectStore();
-    const stateVal = store && store.store;
-    const curRows = stateVal && stateVal.status === 'loaded' && stateVal.file?.data ? stateVal.file.data.rows : null;
-    if (!curRows) return;
-
-    const curById = new Map(curRows.map(r => [r.id, r]));
-    const touchedSet = new Set(touched);
-    // Final list in staged order: staged objects for touched/new rows, live
-    // references for everything else (identity preservation = no re-render).
-    const finalRows = staged.rows.map(r =>
-      (touchedSet.has(r.id) || !curById.has(r.id)) ? r : (curById.get(r.id) || r)
-    );
-
-    store.store = stateWithRows(stateVal, finalRows);
-    console.log('[Worm V17 Mod] Staged edits committed: ' + touched.length + ' row(s)');
-
-    // Existing touched rows need the two-step remount so their
-    // CollectionLoader re-renders the new object lists. Brand-new rows render
-    // on their own (fresh mount). This is the ONLY visual update of the whole
-    // editing session.
-    const existingTouched = touched.filter(id => curById.has(id));
-    if (existingTouched.length === 0) return;
-    const rowsNow = store.store.file.data.rows;
-    const emptiedMap = new Map();
-    const restoreMap = new Map();
-    for (const rowId of existingTouched) {
-      const r = rowsNow.find(x => x.id === rowId);
-      if (r) { restoreMap.set(rowId, r); emptiedMap.set(rowId, { ...r, objects: [] }); }
-    }
-    swapRowsWithRemount(store, emptiedMap, restoreMap, null);
   }
 
   // =========================================================================
@@ -1032,11 +970,8 @@
            Object.keys(editorOverlay.rowPatches || {}).length + ' row edit(s), ' +
            Object.keys(editorOverlay.rowOrder || {}).length + ' ordered row(s)')
         : 'cleared');
-      // If the page loaded before this sync arrived, apply to the live store
-      // now — unless the editor is open: then staging owns the live store and
-      // a mid-edit remount would fight the staged clone. The overlay is
-      // already reflected in stagedData (ops were applied on top of it).
-      if (!editorMode) applyOverlayToLiveStore();
+      // If the page loaded before this sync arrived, apply to the live store now.
+      applyOverlayToLiveStore();
     } else if (command === 'INJECT_SINGLE_CHOICE') {
       const choice = payload;
       const idx = savedCustomChoices.findIndex(c => c.id === choice.id);
@@ -1080,39 +1015,12 @@
         choiceIds
       }, '*');
     } else if (command === 'EDITOR_SET_MODE') {
-      const enable = !!(payload && payload.enabled);
-      if (enable && !editorMode) {
-        // Editing mode is either staged (default: ops apply to an in-memory
-        // clone; page untouched until Done) or live (previous behavior: every
-        // op remounts its row immediately).
-        stagedMode = !!(payload && payload.staged);
-        if (stagedMode) {
-          // Begin staging: snapshot the live data once. All ops until Done
-          // apply to this clone; the page is untouched.
-          const store = findPiniaProjectStore();
-          const stateVal = store && store.store;
-          if (stateVal && stateVal.status === 'loaded' && stateVal.file?.data) {
-            stagedData = cloneValue(stateVal.file.data);
-            stagedTouchedRows.clear();
-          }
-        }
-        editorUndoStack.length = 0;
-        editorRedoStack.length = 0;
-      } else if (!enable && editorMode) {
-        // "Done Editing": apply all staged rows in ONE commit remount
-        // (no-op in live mode — stagedData is null there).
-        commitStagedEdits();
-      }
-      editorMode = enable;
-      if (!enable) { stagedMode = false; stagedData = null; stagedTouchedRows.clear(); editorUndoStack.length = 0; editorRedoStack.length = 0; }
-      // When committing, the deferred remount restore runs ~50ms later; delay
-      // the broadcast so the exit snapshot isn't taken mid-remount.
-      const post = () => window.postMessage({
+      editorMode = !!(payload && payload.enabled);
+      window.postMessage({
         source: 'WORM_CYOA_PAGE_SCRIPT',
         type: 'EDITOR_MODE_CHANGED',
         data: { enabled: editorMode, snapshot: buildEditorSnapshot() }
       }, '*');
-      if (!enable && !editorMode) setTimeout(post, 90); else post();
     } else if (command === 'EDITOR_GET_DATA') {
       window.postMessage({
         source: 'WORM_CYOA_PAGE_SCRIPT',

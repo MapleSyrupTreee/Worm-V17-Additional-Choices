@@ -147,21 +147,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // 5. Settings: staged editing mode (default ON = apply on Done Editing)
-  const stagedModeToggle = document.getElementById('stagedModeToggle');
-  if (stagedModeToggle) {
-    chrome.storage.local.get('editorStaged')
-      .then((res) => { stagedModeToggle.checked = res.editorStaged !== false; })
-      .catch(() => {});
-    stagedModeToggle.addEventListener('change', async () => {
-      try {
-        await chrome.storage.local.set({ editorStaged: stagedModeToggle.checked });
-      } catch (err) {
-        console.warn('Failed to save editor mode setting:', err);
-      }
-    });
-  }
-
   // 4. Connect to active tab
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });

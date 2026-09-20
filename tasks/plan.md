@@ -207,6 +207,13 @@ and is persisted as a lightweight overlay so edits survive page reloads via the 
   content.js reads the setting fresh per editor entry and forwards it in EDITOR_SET_MODE;
   page-script gates staging on `payload.staged` (new `stagedMode` flag; commit is a no-op
   in live mode).
+- **0.2.19 (user request — REVERT)**: the staged-editing implementation (0.2.17's clone/commit
+  engine + 0.2.18's popup toggle + staged chip/panel UI + related CSS) was buggy and is fully
+  REMOVED — code restored to the 0.2.16 tree. KEPT (re-applied on top): (1) popup-open is a
+  pure read (metadataSyncDone — once-per-page-load re-sync); (2) editor updateObject ops sync
+  into customChoices (editorSyncUpdatedChoice); (3) live customs re-injection re-applies
+  overlay.objects patches (applyChoicesToPiniaStore/Vue2); (4) scroll-position save/restore
+  across reloads. Editor is live-mode again: every op applies + remounts immediately.
 - Testing harness notes: see PROJECT_CONTEXT §11.
 - **0.2.10 polish (user request)**: edit mode shows each choice's data id as a click-to-copy
   badge at the card's top-right (`.worm-obj-id-badge`, created on every index pass, removed on

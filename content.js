@@ -279,7 +279,6 @@
     }
   })();
 
-
   // =========================================================================
   // 7. Interactive Editor ("Worm Forge")
   //    Toggle button → edit mode over the live viewer. Cards are matched to
@@ -289,13 +288,7 @@
   // =========================================================================
   const EDITOR_UI = {
     active: false,
-    data: null,        // snapshot { rows, pointTypes, projectName } — ENTRY snapshot
-                       // (staged editing: the DOM no longer changes per op, so
-                       // position-based card mapping stays valid all session)
-    stagedPrev: null,  // most recent staged snapshot (overlay bookkeeping only)
-    stagedAdds: [],    // [{id,title}] choices added while staging (review chip)
-    stagedChipEl: null,
-    stagedPanelEl: null,
+    data: null,        // snapshot { rows, pointTypes, projectName }
     selection: null,   // { objId }
     reqCounter: 0,
     pending: new Map(),
@@ -411,13 +404,7 @@
   }
 
   function editorSetMode(enabled) {
-    // The staged-vs-live editing mode is a user setting (popup → Settings);
-    // read it fresh on every editor entry so a popup toggle takes effect on
-    // the next Edit CYOA click without any extra sync plumbing.
-    const sendWith = (staged) => editorSend('EDITOR_SET_MODE', { enabled, staged });
-    chrome.storage.local.get('editorStaged')
-      .then((res) => sendWith(res.editorStaged !== false)) // default: staged
-      .catch(() => sendWith(true));
+    editorSend('EDITOR_SET_MODE', { enabled });
   }
 
   function editorHandleMode(data) {
@@ -434,7 +421,6 @@
     }
     if (enabled) {
       if (data && data.snapshot) EDITOR_UI.data = data.snapshot;
-      EDITOR_UI.stagedPrev = EDITOR_UI.data; // baseline for overlay bookkeeping
       editorEnter();
       showToast('Editor on — click a choice to select it. Ctrl+E to exit.');
     } else {
@@ -445,22 +431,9 @@
   function editorHandleDataChanged(data) {
     if (!data) return;
     if (EDITOR_UI.dragState) editorEndDrag(false); // card geometry is about to change
-    // Staged editing: ops no longer touch the live DOM, so EDITOR_UI.data must
-    // stay the ENTRY snapshot (position-based card mapping depends on it).
-    // Dialogs read current object state via EDITOR_OBJECT; stagedPrev tracks
-    // the staged state purely for overlay rowOrder bookkeeping.
-    const prevData = EDITOR_UI.stagedPrev || EDITOR_UI.data;
+    const prevData = EDITOR_UI.data; // pre-op snapshot (source-row lookup for moves)
+    if (data.snapshot && EDITOR_UI.active) EDITOR_UI.data = data.snapshot;
     if (data.op && data.snapshot) overlayApplyOp(data, prevData);
-    if (data.snapshot) EDITOR_UI.stagedPrev = data.snapshot;
-    // Staged additions bookkeeping (review chip in the editor UI).
-    if ((data.opType === 'addObject' || data.opType === 'duplicateObject') && data.extra && data.extra.object) {
-      EDITOR_UI.stagedAdds.push({ id: data.extra.object.id, title: data.extra.object.title || data.extra.object.id });
-    }
-    if (data.opType === 'deleteObjects' && Array.isArray(data.deletedIds)) {
-      const delIds = new Set(data.deletedIds);
-      EDITOR_UI.stagedAdds = EDITOR_UI.stagedAdds.filter(a => !delIds.has(a.id));
-    }
-    editorUpdateStagedIndicator();
     // Storage bookkeeping must run even when the editor UI is off (e.g. the
     // last op before an exit, or broadcasts racing the toggle).
     if (data.opType === 'deleteObjects' && Array.isArray(data.deletedIds) && data.deletedIds.length > 0) {
@@ -787,30 +760,6 @@
     });
     layer.appendChild(selBox);
     layer.appendChild(toolbar);
-
-    // Staged-changes review chip: visible once something was added while
-    // staging. Click → review panel (edit/remove staged additions). Everything
-    // becomes visible on the page only at "Done Editing".
-    const stagedChip = document.createElement('div');
-    stagedChip.className = 'worm-staged-chip worm-editor-ui';
-    stagedChip.style.display = 'none';
-    stagedChip.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const panel = EDITOR_UI.stagedPanelEl;
-      if (!panel) return;
-      const showing = panel.style.display !== 'none';
-      panel.style.display = showing ? 'none' : 'block';
-      if (!showing) editorRenderStagedPanel();
-    });
-    const stagedPanel = document.createElement('div');
-    stagedPanel.className = 'worm-staged-panel worm-editor-ui';
-    stagedPanel.style.display = 'none';
-    stagedPanel.addEventListener('click', (e) => e.stopPropagation());
-    layer.appendChild(stagedChip);
-    layer.appendChild(stagedPanel);
-    EDITOR_UI.stagedChipEl = stagedChip;
-    EDITOR_UI.stagedPanelEl = stagedPanel;
-
     document.body.appendChild(layer);
     EDITOR_UI.layerEl = layer;
     EDITOR_UI.selBoxEl = selBox;
@@ -867,10 +816,6 @@
     EDITOR_UI.layerEl = null;
     EDITOR_UI.selBoxEl = null;
     EDITOR_UI.toolbarEl = null;
-    EDITOR_UI.stagedChipEl = null;
-    EDITOR_UI.stagedPanelEl = null;
-    EDITOR_UI.stagedPrev = null;
-    EDITOR_UI.stagedAdds = [];
     EDITOR_UI.selection = null;
     editorCardIndex.clear();
     editorElIndex.clear();
@@ -902,58 +847,6 @@
   function editorRemoveRowBars() {
     EDITOR_UI.rowBars.forEach(bar => bar.remove());
     EDITOR_UI.rowBars = [];
-  }
-
-  // Staged-changes review UI: chip shows the count of staged additions; the
-  // panel lists them (click = edit in place, ✕ = remove from staging).
-  function editorUpdateStagedIndicator() {
-    if (!EDITOR_UI.stagedChipEl) return;
-    const n = EDITOR_UI.stagedAdds.length;
-    EDITOR_UI.stagedChipEl.style.display = n > 0 ? 'block' : 'none';
-    if (n > 0) EDITOR_UI.stagedChipEl.textContent = n + ' staged — click to review';
-    if (EDITOR_UI.stagedPanelEl && EDITOR_UI.stagedPanelEl.style.display !== 'none') editorRenderStagedPanel();
-  }
-
-  function editorRenderStagedPanel() {
-    const panel = EDITOR_UI.stagedPanelEl;
-    if (!panel) return;
-    panel.innerHTML = '';
-    const title = document.createElement('div');
-    title.className = 'worm-staged-title';
-    title.textContent = 'Staged additions (applied on Done Editing)';
-    panel.appendChild(title);
-    if (!EDITOR_UI.stagedAdds.length) {
-      const empty = document.createElement('div');
-      empty.className = 'worm-staged-empty';
-      empty.textContent = 'No staged additions.';
-      panel.appendChild(empty);
-      return;
-    }
-    EDITOR_UI.stagedAdds.forEach((a) => {
-      const row = document.createElement('div');
-      row.className = 'worm-staged-item';
-      const open = document.createElement('button');
-      open.type = 'button';
-      open.className = 'worm-staged-open';
-      open.textContent = a.title;
-      open.title = 'Edit this staged choice';
-      open.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openChoiceModal({ objId: a.id });
-      });
-      const del = document.createElement('button');
-      del.type = 'button';
-      del.className = 'worm-staged-del';
-      del.textContent = '✕';
-      del.title = 'Remove this staged choice';
-      del.addEventListener('click', (e) => {
-        e.stopPropagation();
-        editorDelete(a.id);
-      });
-      row.appendChild(open);
-      row.appendChild(del);
-      panel.appendChild(row);
-    });
   }
 
   function editorSelect(objId) {

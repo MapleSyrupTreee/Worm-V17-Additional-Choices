@@ -238,6 +238,11 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
   reads the setting fresh at each Edit CYOA entry and passes it in the EDITOR_SET_MODE
   payload; page-script gates staging on payload.staged (stagedMode flag), so Done Editing
   is a no-op in live mode. Popup toggle is a styled switch (popup.css switch classes).
+  0.2.19 (user request — REVERT): staged editing removed entirely (engine, popup toggle,
+  review chip, CSS) — code back to the 0.2.16 behavior (live ops, immediate remounts).
+  Bug fixes kept on top: popup ping is a pure read (metadataSyncDone); editor edits sync
+  into customChoices (editorSyncUpdatedChoice); customs re-injection re-applies
+  overlay.objects patches; scroll position restored after reloads.
 - 0.2.5 fixes (user feedback on the Meta button): Card Width now shows "(Row default)" when the
   object inherits the row width (objectWidth '' is the COMMON case — 14k of 14.3k objects) and
   never silently overwrites; phantom modifier row removed (empty scores = empty editor + hint);
