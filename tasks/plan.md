@@ -188,6 +188,19 @@ and is persisted as a lightweight overlay so edits survive page reloads via the 
   everywhere else; custom-choice injection itself is unchanged. Verified: 14-case unit table
   for the predicate (incl. wrong ports, non-http protocols, lookup-param spoofing) plus live
   positive/negative page tests on the same origin.
+- **0.2.17 (user requests)**: (1) Popup-open is a pure read now — the metadata re-sync runs
+  only ONCE per page load; the app icon can no longer revert editor edits (that chain:
+  GET_PAGE_STATUS → REQUEST_METADATA → CYOA_METADATA_LOADED → syncSavedChoicesToPage →
+  re-injection of stale storage customs). (2) Root fix: editor updateObject ops also merge
+  into the saved customChoices entry; live customs re-injection re-applies overlay.objects
+  patches (fetch-bake ordering). (3) Scroll position saved (sessionStorage) + restored after
+  any reload (with retries while layout settles; stops if the user scrolls). (4) STAGED
+  EDITING: editor ops apply to an in-memory clone while the editor is open — zero page
+  changes/remounts mid-edit; "Done Editing" commits all touched rows in ONE remount
+  (commitStagedEdits preserves untouched row identity; handles row add/order/delete too);
+  overlay still persists per op; a "N staged — click to review" chip lists staged additions
+  (edit in place or remove before Done). USER TO VERIFY MANUALLY (agent browser tests skipped
+  by request).
 - Testing harness notes: see PROJECT_CONTEXT §11.
 - **0.2.10 polish (user request)**: edit mode shows each choice's data id as a click-to-copy
   badge at the card's top-right (`.worm-obj-id-badge`, created on every index pass, removed on

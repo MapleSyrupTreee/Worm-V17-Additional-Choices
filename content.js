@@ -8,6 +8,12 @@
     rows: [],
     pointTypes: []
   };
+  // The CYOA_METADATA_LOADED → syncSavedChoicesToPage re-sync must run only
+  // ONCE per page load (when point types become known). Every later metadata
+  // emission — e.g. the popup's status ping (REQUEST_METADATA) — must be a
+  // pure read: re-syncing would re-inject the stored customChoices into the
+  // live store and could revert editor changes. Popup open ≠ page change.
+  let metadataSyncDone = false;
 
   // 1. On startup, fetch saved choices from chrome.storage, normalize and pass to page-script
   async function syncSavedChoicesToPage() {
@@ -89,8 +95,12 @@
       // Save to chrome.storage for popup access
       await chrome.storage.local.set({ lastDetectedCYOA: detectedMetadata });
 
-      // Re-sync choices with new point types to ensure clean afterText
-      syncSavedChoicesToPage();
+      // Re-sync choices with new point types to ensure clean afterText —
+      // only on the FIRST metadata load of this page (see metadataSyncDone).
+      if (!metadataSyncDone) {
+        metadataSyncDone = true;
+        syncSavedChoicesToPage();
+      }
     } else if (event.data.type === 'CHOICE_INJECTED_SUCCESS') {
       showToast('Custom choice added to CYOA!');
     } else if (event.data.type === 'CHOICE_REMOVED_SUCCESS') {
@@ -224,6 +234,52 @@
       .replace(/"/g, '&quot;');
   }
 
+  // 6b. Scroll-position preservation across reloads: the extension reloads the
+  // page in a few flows (import, discard) and the user may refresh manually —
+  // in all cases they should come back at the exact spot they left. Kept in
+  // sessionStorage (per-tab, survives reload, dies with the tab).
+  (function initScrollRestore() {
+    const KEY = 'wormScrollY:' + window.location.pathname;
+    let saveTimer = 0;
+    let userTookOver = false; // stop retry-restore once the user scrolls again
+    const save = () => {
+      try { sessionStorage.setItem(KEY, String(Math.round(window.scrollY))); } catch (err) {}
+    };
+    window.addEventListener('scroll', () => {
+      userTookOver = true;
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(save, 150);
+    }, { passive: true });
+    window.addEventListener('beforeunload', save);
+    window.addEventListener('pagehide', save);
+
+    const restoreOnce = () => {
+      try {
+        const raw = sessionStorage.getItem(KEY);
+        if (raw == null) return false;
+        const y = parseInt(raw, 10) || 0;
+        if (y > 0 && Math.abs(window.scrollY - y) > 2) {
+          window.scrollTo(0, y);
+          return true;
+        }
+      } catch (err) {}
+      return false;
+    };
+    // Restore on load, then retry a few times: images/lazy remounts change the
+    // page height after load and can push the restored offset back to 0.
+    if (restoreOnce()) {
+      let attempts = 0;
+      const retry = () => {
+        if (userTookOver || attempts >= 6) return;
+        attempts++;
+        if (window.scrollY === 0) restoreOnce();
+        setTimeout(retry, 700);
+      };
+      setTimeout(retry, 700);
+    }
+  })();
+
+
   // =========================================================================
   // 7. Interactive Editor ("Worm Forge")
   //    Toggle button → edit mode over the live viewer. Cards are matched to
@@ -233,7 +289,13 @@
   // =========================================================================
   const EDITOR_UI = {
     active: false,
-    data: null,        // snapshot { rows, pointTypes, projectName }
+    data: null,        // snapshot { rows, pointTypes, projectName } — ENTRY snapshot
+                       // (staged editing: the DOM no longer changes per op, so
+                       // position-based card mapping stays valid all session)
+    stagedPrev: null,  // most recent staged snapshot (overlay bookkeeping only)
+    stagedAdds: [],    // [{id,title}] choices added while staging (review chip)
+    stagedChipEl: null,
+    stagedPanelEl: null,
     selection: null,   // { objId }
     reqCounter: 0,
     pending: new Map(),
@@ -366,6 +428,7 @@
     }
     if (enabled) {
       if (data && data.snapshot) EDITOR_UI.data = data.snapshot;
+      EDITOR_UI.stagedPrev = EDITOR_UI.data; // baseline for overlay bookkeeping
       editorEnter();
       showToast('Editor on — click a choice to select it. Ctrl+E to exit.');
     } else {
@@ -376,15 +439,30 @@
   function editorHandleDataChanged(data) {
     if (!data) return;
     if (EDITOR_UI.dragState) editorEndDrag(false); // card geometry is about to change
-    const prevData = EDITOR_UI.data; // pre-op snapshot (source-row lookup for moves)
-    if (data.snapshot && EDITOR_UI.active) EDITOR_UI.data = data.snapshot;
+    // Staged editing: ops no longer touch the live DOM, so EDITOR_UI.data must
+    // stay the ENTRY snapshot (position-based card mapping depends on it).
+    // Dialogs read current object state via EDITOR_OBJECT; stagedPrev tracks
+    // the staged state purely for overlay rowOrder bookkeeping.
+    const prevData = EDITOR_UI.stagedPrev || EDITOR_UI.data;
     if (data.op && data.snapshot) overlayApplyOp(data, prevData);
+    if (data.snapshot) EDITOR_UI.stagedPrev = data.snapshot;
+    // Staged additions bookkeeping (review chip in the editor UI).
+    if ((data.opType === 'addObject' || data.opType === 'duplicateObject') && data.extra && data.extra.object) {
+      EDITOR_UI.stagedAdds.push({ id: data.extra.object.id, title: data.extra.object.title || data.extra.object.id });
+    }
+    if (data.opType === 'deleteObjects' && Array.isArray(data.deletedIds)) {
+      const delIds = new Set(data.deletedIds);
+      EDITOR_UI.stagedAdds = EDITOR_UI.stagedAdds.filter(a => !delIds.has(a.id));
+    }
+    editorUpdateStagedIndicator();
     // Storage bookkeeping must run even when the editor UI is off (e.g. the
     // last op before an exit, or broadcasts racing the toggle).
     if (data.opType === 'deleteObjects' && Array.isArray(data.deletedIds) && data.deletedIds.length > 0) {
       editorPurgeDeletedCustomChoices(data.deletedIds);
     } else if ((data.opType === 'duplicateObject' || data.opType === 'addObject') && data.extra && data.extra.object) {
       editorTrackNewChoice(data.extra.object);
+    } else if (data.opType === 'updateObject' && data.op && data.op.objId && data.op.patch) {
+      editorSyncUpdatedChoice(data.op.objId, data.op.patch);
     }
     if (!EDITOR_UI.active) return;
     const keep = EDITOR_UI.selection && EDITOR_UI.selection.objId;
@@ -435,6 +513,25 @@
       }
     } catch (err) {
       console.warn('[Worm V17 Mod] Failed to track duplicated choice:', err);
+    }
+  }
+
+  async function editorSyncUpdatedChoice(objId, patch) {
+    // Edits made in the editor (scores, requirements, size/width, ...) must
+    // also land in the saved customChoices entry, otherwise any re-sync of
+    // storage to the page (e.g. the popup's status ping → REQUEST_METADATA →
+    // SYNC_CUSTOM_CHOICES) would overwrite the object with its stale pre-edit
+    // copy and visibly revert the edit. The overlay already has the patch;
+    // this keeps the two sources of truth consistent.
+    try {
+      if (!objId || !patch || typeof patch !== 'object') return;
+      const { customChoices = [] } = await chrome.storage.local.get('customChoices');
+      const idx = customChoices.findIndex(c => c.id === objId);
+      if (idx < 0) return; // baseline (non-custom) object — overlay-only is correct
+      customChoices[idx] = { ...customChoices[idx], ...JSON.parse(JSON.stringify(patch)) };
+      await chrome.storage.local.set({ customChoices });
+    } catch (err) {
+      console.warn('[Worm V17 Mod] Failed to sync edited choice into storage:', err);
     }
   }
 
@@ -684,6 +781,30 @@
     });
     layer.appendChild(selBox);
     layer.appendChild(toolbar);
+
+    // Staged-changes review chip: visible once something was added while
+    // staging. Click → review panel (edit/remove staged additions). Everything
+    // becomes visible on the page only at "Done Editing".
+    const stagedChip = document.createElement('div');
+    stagedChip.className = 'worm-staged-chip worm-editor-ui';
+    stagedChip.style.display = 'none';
+    stagedChip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const panel = EDITOR_UI.stagedPanelEl;
+      if (!panel) return;
+      const showing = panel.style.display !== 'none';
+      panel.style.display = showing ? 'none' : 'block';
+      if (!showing) editorRenderStagedPanel();
+    });
+    const stagedPanel = document.createElement('div');
+    stagedPanel.className = 'worm-staged-panel worm-editor-ui';
+    stagedPanel.style.display = 'none';
+    stagedPanel.addEventListener('click', (e) => e.stopPropagation());
+    layer.appendChild(stagedChip);
+    layer.appendChild(stagedPanel);
+    EDITOR_UI.stagedChipEl = stagedChip;
+    EDITOR_UI.stagedPanelEl = stagedPanel;
+
     document.body.appendChild(layer);
     EDITOR_UI.layerEl = layer;
     EDITOR_UI.selBoxEl = selBox;
@@ -740,6 +861,10 @@
     EDITOR_UI.layerEl = null;
     EDITOR_UI.selBoxEl = null;
     EDITOR_UI.toolbarEl = null;
+    EDITOR_UI.stagedChipEl = null;
+    EDITOR_UI.stagedPanelEl = null;
+    EDITOR_UI.stagedPrev = null;
+    EDITOR_UI.stagedAdds = [];
     EDITOR_UI.selection = null;
     editorCardIndex.clear();
     editorElIndex.clear();
@@ -771,6 +896,58 @@
   function editorRemoveRowBars() {
     EDITOR_UI.rowBars.forEach(bar => bar.remove());
     EDITOR_UI.rowBars = [];
+  }
+
+  // Staged-changes review UI: chip shows the count of staged additions; the
+  // panel lists them (click = edit in place, ✕ = remove from staging).
+  function editorUpdateStagedIndicator() {
+    if (!EDITOR_UI.stagedChipEl) return;
+    const n = EDITOR_UI.stagedAdds.length;
+    EDITOR_UI.stagedChipEl.style.display = n > 0 ? 'block' : 'none';
+    if (n > 0) EDITOR_UI.stagedChipEl.textContent = n + ' staged — click to review';
+    if (EDITOR_UI.stagedPanelEl && EDITOR_UI.stagedPanelEl.style.display !== 'none') editorRenderStagedPanel();
+  }
+
+  function editorRenderStagedPanel() {
+    const panel = EDITOR_UI.stagedPanelEl;
+    if (!panel) return;
+    panel.innerHTML = '';
+    const title = document.createElement('div');
+    title.className = 'worm-staged-title';
+    title.textContent = 'Staged additions (applied on Done Editing)';
+    panel.appendChild(title);
+    if (!EDITOR_UI.stagedAdds.length) {
+      const empty = document.createElement('div');
+      empty.className = 'worm-staged-empty';
+      empty.textContent = 'No staged additions.';
+      panel.appendChild(empty);
+      return;
+    }
+    EDITOR_UI.stagedAdds.forEach((a) => {
+      const row = document.createElement('div');
+      row.className = 'worm-staged-item';
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'worm-staged-open';
+      open.textContent = a.title;
+      open.title = 'Edit this staged choice';
+      open.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openChoiceModal({ objId: a.id });
+      });
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'worm-staged-del';
+      del.textContent = '✕';
+      del.title = 'Remove this staged choice';
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        editorDelete(a.id);
+      });
+      row.appendChild(open);
+      row.appendChild(del);
+      panel.appendChild(row);
+    });
   }
 
   function editorSelect(objId) {

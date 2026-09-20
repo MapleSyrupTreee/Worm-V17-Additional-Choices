@@ -219,6 +219,19 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
   default-ports any path; ltouroumov.github.io/cyoa-editor/; localhost:8123/viewer/ + 127.0.0.1)
   — button + Ctrl+E absent elsewhere; custom-choice injection unchanged. 14-case predicate
   unit table + live positive/negative page tests pass.
+  0.2.17 (user requests): (1) popup-open is now a pure read — the CYOA_METADATA_LOADED
+  re-sync runs once per page load (metadataSyncDone flag); later pings (app icon) no longer
+  re-inject customChoices into the live store (that was reverting editor edits to stale
+  storage copies). (2) Root fix kept too: editor updateObject ops now merge into the saved
+  customChoices entry (editorSyncUpdatedChoice), and live re-injection re-applies
+  overlay.objects patches (applyChoicesToPiniaStore/Vue2) so layering matches the
+  fetch-bake order. (3) Scroll position is saved (sessionStorage, throttled + beforeunload)
+  and restored after reloads with retry while layout settles. (4) STAGED EDITING: with the
+  editor open, all ops apply to an in-memory clone (stagedData) — the live store is NOT
+  written, no remounts/refresh mid-edit; Done Editing commits all touched rows in one pass
+  (commitStagedEdits: staged order + touched-row remount); overlay still persists per op
+  (crash-safe); a "N staged" chip lists staged additions (click = edit, ✕ = remove).
+  NOT browser-tested by agent — user to verify manually.
 - 0.2.5 fixes (user feedback on the Meta button): Card Width now shows "(Row default)" when the
   object inherits the row width (objectWidth '' is the COMMON case — 14k of 14.3k objects) and
   never silently overwrites; phantom modifier row removed (empty scores = empty editor + hint);
