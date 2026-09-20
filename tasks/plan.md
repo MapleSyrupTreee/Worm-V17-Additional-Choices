@@ -201,6 +201,12 @@ and is persisted as a lightweight overlay so edits survive page reloads via the 
   overlay still persists per op; a "N staged — click to review" chip lists staged additions
   (edit in place or remove before Done). USER TO VERIFY MANUALLY (agent browser tests skipped
   by request).
+- **0.2.18 (user request)**: popup gains a **Settings** section with a **"Stage editor
+  changes"** switch (`editorStaged` storage key, default ON). ON = staged editing (all ops
+  apply on "Done Editing"); OFF = previous live mode (each op applies immediately).
+  content.js reads the setting fresh per editor entry and forwards it in EDITOR_SET_MODE;
+  page-script gates staging on `payload.staged` (new `stagedMode` flag; commit is a no-op
+  in live mode).
 - Testing harness notes: see PROJECT_CONTEXT §11.
 - **0.2.10 polish (user request)**: edit mode shows each choice's data id as a click-to-copy
   badge at the card's top-right (`.worm-obj-id-badge`, created on every index pass, removed on

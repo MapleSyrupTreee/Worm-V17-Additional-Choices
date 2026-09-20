@@ -232,6 +232,12 @@ Score: `{ id (pointType id), value ('-N' gain / 'N' cost — ICC Neo convention)
   (commitStagedEdits: staged order + touched-row remount); overlay still persists per op
   (crash-safe); a "N staged" chip lists staged additions (click = edit, ✕ = remove).
   NOT browser-tested by agent — user to verify manually.
+  0.2.18 (user request): new Settings section in the popup with a "Stage editor changes"
+  toggle (stored as `editorStaged` in chrome.storage.local, default ON = staged mode);
+  OFF restores the previous live mode (every op remounts its row immediately). content.js
+  reads the setting fresh at each Edit CYOA entry and passes it in the EDITOR_SET_MODE
+  payload; page-script gates staging on payload.staged (stagedMode flag), so Done Editing
+  is a no-op in live mode. Popup toggle is a styled switch (popup.css switch classes).
 - 0.2.5 fixes (user feedback on the Meta button): Card Width now shows "(Row default)" when the
   object inherits the row width (objectWidth '' is the COMMON case — 14k of 14.3k objects) and
   never silently overwrites; phantom modifier row removed (empty scores = empty editor + hint);

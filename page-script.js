@@ -588,6 +588,7 @@
   // Staged editing: while the editor is open, ops apply to an in-memory clone
   // of file.data instead of the live store — no remounts, no visual refresh
   // mid-edit. "Done Editing" commits every touched row in a single pass.
+  let stagedMode = false;             // staged (clone) vs live editing
   let stagedData = null;              // cloned file.data while editing
   let stagedTouchedRows = new Set();  // row ids to remount on commit
 
@@ -1081,22 +1082,29 @@
     } else if (command === 'EDITOR_SET_MODE') {
       const enable = !!(payload && payload.enabled);
       if (enable && !editorMode) {
-        // Begin staging: snapshot the live data once. All ops until Done apply
-        // to this clone; the page is untouched.
-        const store = findPiniaProjectStore();
-        const stateVal = store && store.store;
-        if (stateVal && stateVal.status === 'loaded' && stateVal.file?.data) {
-          stagedData = cloneValue(stateVal.file.data);
-          stagedTouchedRows.clear();
+        // Editing mode is either staged (default: ops apply to an in-memory
+        // clone; page untouched until Done) or live (previous behavior: every
+        // op remounts its row immediately).
+        stagedMode = !!(payload && payload.staged);
+        if (stagedMode) {
+          // Begin staging: snapshot the live data once. All ops until Done
+          // apply to this clone; the page is untouched.
+          const store = findPiniaProjectStore();
+          const stateVal = store && store.store;
+          if (stateVal && stateVal.status === 'loaded' && stateVal.file?.data) {
+            stagedData = cloneValue(stateVal.file.data);
+            stagedTouchedRows.clear();
+          }
         }
         editorUndoStack.length = 0;
         editorRedoStack.length = 0;
       } else if (!enable && editorMode) {
-        // "Done Editing": apply all staged rows in ONE commit remount.
+        // "Done Editing": apply all staged rows in ONE commit remount
+        // (no-op in live mode — stagedData is null there).
         commitStagedEdits();
       }
       editorMode = enable;
-      if (!enable) { stagedData = null; stagedTouchedRows.clear(); editorUndoStack.length = 0; editorRedoStack.length = 0; }
+      if (!enable) { stagedMode = false; stagedData = null; stagedTouchedRows.clear(); editorUndoStack.length = 0; editorRedoStack.length = 0; }
       // When committing, the deferred remount restore runs ~50ms later; delay
       // the broadcast so the exit snapshot isn't taken mid-remount.
       const post = () => window.postMessage({

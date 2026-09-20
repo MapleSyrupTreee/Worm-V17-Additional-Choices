@@ -411,7 +411,13 @@
   }
 
   function editorSetMode(enabled) {
-    editorSend('EDITOR_SET_MODE', { enabled });
+    // The staged-vs-live editing mode is a user setting (popup → Settings);
+    // read it fresh on every editor entry so a popup toggle takes effect on
+    // the next Edit CYOA click without any extra sync plumbing.
+    const sendWith = (staged) => editorSend('EDITOR_SET_MODE', { enabled, staged });
+    chrome.storage.local.get('editorStaged')
+      .then((res) => sendWith(res.editorStaged !== false)) // default: staged
+      .catch(() => sendWith(true));
   }
 
   function editorHandleMode(data) {
