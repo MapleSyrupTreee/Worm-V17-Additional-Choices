@@ -165,6 +165,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     })();
     sendResponse({ status: 'ok' });
     return true;
+  } else if (message.action === 'GET_EDITS_SUMMARY') {
+    // Popup asks for a human-readable list of editor edits on existing
+    // (non-custom) choices: field edits, moves, deletions. Titles resolve
+    // from a live EDITOR_GET_DATA snapshot when the CYOA is loaded.
+    (async () => {
+      try {
+        const { editorOverlay = null, customChoices = [] } = await chrome.storage.local.get(['editorOverlay', 'customChoices']);
+        let snapshot = null;
+        const resp = await editorRequest('EDITOR_GET_DATA');
+        if (resp && resp.snapshot) snapshot = resp.snapshot;
+        // Row titles from cached metadata keep move entries readable even when
+        // the live snapshot isn't available.
+        const rowTitleFallback = {};
+        (detectedMetadata.rows || []).forEach(r => { if (r && r.id) rowTitleFallback[r.id] = r.title || r.id; });
+        sendResponse({
+          status: 'ok',
+          live: !!snapshot,
+          items: overlaySummarizeEdits(editorOverlay, customChoices, snapshot, rowTitleFallback),
+        });
+      } catch (err) {
+        sendResponse({ status: 'error', error: String((err && err.message) || err), items: [] });
+      }
+    })();
+    return true;
+  } else if (message.action === 'SHOW_EDITOR_TOGGLE') {
+    // Popup settings toggle: show/hide the floating Edit CYOA button live.
+    const btn = document.getElementById('worm-edit-toggle');
+    if (btn) btn.hidden = !message.visible;
+    sendResponse({ status: 'ok' });
   } else if (message.action === 'DISCARD_ALL_EDITS') {
     // Safety hatch: wipe the overlay + custom choices, then reload so the
     // page comes back pristine from the original project.json.

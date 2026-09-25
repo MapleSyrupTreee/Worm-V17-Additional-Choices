@@ -30,7 +30,61 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // 2b. Discard all edits (overlay + custom choices) and reload the page
+  // 2b. Show/hide the on-page "Edit CYOA" button (persisted setting)
+  const showEditorToggle = document.getElementById('showEditorToggle');
+  chrome.storage.local.get('showEditorToggle').then((res) => {
+    showEditorToggle.checked = res.showEditorToggle !== false; // default: visible
+  }).catch(() => {});
+  showEditorToggle.addEventListener('change', async () => {
+    try {
+      await chrome.storage.local.set({ showEditorToggle: showEditorToggle.checked });
+    } catch (err) { /* storage unavailable — ignore */ }
+    if (activeTabId) {
+      chrome.tabs.sendMessage(activeTabId, { action: 'SHOW_EDITOR_TOGGLE', visible: showEditorToggle.checked })
+        .catch(() => { /* page not open — next load reads the setting */ });
+    }
+  });
+
+  // 2c. Editor edits on existing choices (moved / edited / deleted)
+  const editsList = document.getElementById('editsList');
+  const editsCount = document.getElementById('editsCount');
+  const editsHint = document.getElementById('editsHint');
+  async function loadEditsSummary(tabId) {
+    let items = [];
+    let live = false;
+    try {
+      const resp = await chrome.tabs.sendMessage(tabId, { action: 'GET_EDITS_SUMMARY' });
+      if (resp && resp.status === 'ok') { items = resp.items || []; live = !!resp.live; }
+    } catch (err) {
+      // No reachable content script (page closed / internal page): fall back
+      // to a storage-only summary — deletions and field edits still resolve,
+      // but moved-choice detection needs a live snapshot and is skipped.
+      try {
+        const { editorOverlay = null, customChoices = [], lastDetectedCYOA = null } = await chrome.storage.local.get(['editorOverlay', 'customChoices', 'lastDetectedCYOA']);
+        const rowTitleFallback = {};
+        ((lastDetectedCYOA && lastDetectedCYOA.rows) || []).forEach(r => { if (r && r.id) rowTitleFallback[r.id] = r.title || r.id; });
+        items = overlaySummarizeEdits(editorOverlay, customChoices, null, rowTitleFallback);
+      } catch (err2) { items = []; }
+    }
+    editsCount.textContent = String(items.length);
+    editsHint.hidden = live || items.length === 0;
+    if (items.length === 0) {
+      editsList.innerHTML = '<div class="empty-state">No edits to existing choices.</div>';
+      return;
+    }
+    const kindLabel = { edited: 'edited', moved: 'moved', deleted: 'deleted' };
+    editsList.innerHTML = items.map(it => `
+      <div class="choice-item">
+        <span class="edit-kind kind-${it.kind}">${kindLabel[it.kind] || it.kind}</span>
+        <div class="choice-info">
+          <span class="choice-title" title="${escapeHtml(it.title)}">${escapeHtml(it.title)}</span>
+          <span class="choice-meta" title="${escapeHtml(it.detail)}">${escapeHtml(it.detail)}</span>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // 2d. Discard all edits (overlay + custom choices) and reload the page
   const discardAllBtn = document.getElementById('discardAllBtn');
   discardAllBtn.addEventListener('click', async () => {
     if (!activeTabId) {
@@ -156,6 +210,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     activeTabId = tab.id;
+    loadEditsSummary(activeTabId);
 
     if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('chrome-extension://')) {
       setInactive('Internal page');

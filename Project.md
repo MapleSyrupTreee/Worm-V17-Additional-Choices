@@ -2,14 +2,14 @@
 
 ## Overview
 
-A Chrome Extension (Manifest V3, version 0.2.20) that augments the **Worm V17 Interactive CYOA** (an ICC-Neo `cyoa-editor` viewer app — Vue 3 + Pinia; see `Viewer.md` for viewer internals and the full `project.json` data model). It lets the user add, edit, duplicate, move, and delete choices (perks/powers/drawbacks) on the live CYOA page, persist those modifications locally, and export/import them as JSON.
+A Chrome Extension (Manifest V3, version 0.2.21) that augments the **Worm V17 Interactive CYOA** (an ICC-Neo `cyoa-editor` viewer app — Vue 3 + Pinia; see `Viewer.md` for viewer internals and the full `project.json` data model). It lets the user add, edit, duplicate, move, and delete choices (perks/powers/drawbacks) on the live CYOA page, persist those modifications locally, and export/import them as JSON.
 
 No build step — plain JS files loaded directly as an unpacked extension. No background service worker.
 
 ## File Structure
 
 ```
-manifest.json              MV3 manifest (v0.2.20)
+manifest.json              MV3 manifest (v0.2.21)
 
 Isolated world (content scripts, loaded in manifest order — shared top-level scope):
 content-util.js            Toast, HTML escaping, clipboard, point-name abbreviation
@@ -19,6 +19,7 @@ content-editor.js          Editor shell: mode toggle, request transport (reqId/t
 content-editor-dragdrop.js Pointer drag & drop, capture-click selection, hotkeys,
                            duplicate/delete actions
 content-choice-modal.js    Shared Add/Edit choice dialog + delete-confirm dialog
+content-edits-summary.js   Overlay→"editor edits" summarizer (shared with the popup)
 content.js                 Entry: storage<->page-script bridge, popup messaging,
                            scroll restore, boot
 
@@ -93,8 +94,8 @@ Flags track application state: `overlayAppliedInFetch`, `overlayAppliedToLive`, 
 
 ### 4. In-page editor (content.js)
 - **Metadata detection:** `CYOA_METADATA_LOADED` from page-script triggers a one-time re-sync of saved choices (`metadataSyncDone` guard — later metadata emissions, e.g. popup status pings, must be pure reads to avoid reverting live edits).
-- **Choice modal** (`openChoiceModal`): shared add/edit dialog. Add mode starts blank with a Destination (row) selector; edit mode also shows a Section Activation editor. Fields: title, text, image (URL or embedded data — `imageIsUrl` flag), object width, per-point-type score rows (Cost/Gain segmented toggle + amount), requirements builder (required/incompatible vs. any choice id — non-`id` terms are preserved untouched), **addons editor** (collapse/expand rows: title + description + one optional {type:'id'} requirement per addon; V17 addon shape `{id, image, requireds, template, text, title}` per `Viewer.md` §4 — other requirement terms preserved verbatim; new addon ids are 8-char base36), behavior flags (Not selectable / Pick multiple with max & min picks), `activateThisChoice`/`deactivateThisChoice` id lists with "when picked, activate/deactivate the id above" toggles. A chip shows/copy-copies the object's ID.
-- **Selection layer:** overlay layer with selection box + floating toolbar (✎ Edit, ＋ Insert after, ⧉ Duplicate, ⠿ drag handle, 🗑 Delete / Del key). **Insert after** opens the Add dialog locked to the reference choice's row with an exact `addObject` index (right after it).
+- **Choice modal** (`openChoiceModal`): shared add/edit dialog. Add mode starts blank with a Destination (row) selector; edit mode also shows a Section Activation editor. Fields: title, text, image (URL or embedded data — `imageIsUrl` flag), object width, per-point-type score rows (Cost/Gain segmented toggle + amount), requirements builder (required/incompatible vs. any choice id — non-`id` terms are preserved untouched), **addons editor** (collapse/expand rows: title + description + one optional {type:'id'} requirement per addon; V17 addon shape `{id, image, requireds, template, text, title}` per `Viewer.md` §4 — other requirement terms preserved verbatim; new addon ids are 8-char base36), behavior flags (Not selectable / Pick multiple with max & min picks), `activateThisChoice`/`deactivateThisChoice` id lists. A chip shows/copy-copies the object's ID.
+- **Selection layer:** overlay layer with selection box + floating toolbar (✎ Edit, ＋ Insert after, ⧉ Duplicate, ⠿ drag handle, 🗑 Delete / Del key). **Insert after** opens the Add dialog locked to the reference choice's row with an exact `addObject` index (reference index + 1, i.e. immediately after it).
 - **Drag & drop:** pointer-based with ghost element (transform-only), insertion indicator, row highlight hint, viewport-edge auto-scroll, Escape-to-cancel; hit-testing against row wrappers/card grids.
 - **ID badges:** `.worm-obj-id-badge` chips on cards (click to copy choice ID), positioned via `MutationObserver`-driven re-indexing (CollectionLoader adds cards incrementally after remount).
 - **Undo/redo:** ops pushed to `editorUndoStack`/`editorRedoStack` (max 100) with inverse ops, executed through `EDITOR_EXEC` handlers (`updateObject`, `addObject`, `deleteObjects`, row patches, row order...).
@@ -108,6 +109,8 @@ Flags track application state: `overlayAppliedInFetch`, `overlayAppliedToLive`, 
 - Status indicator via `GET_PAGE_STATUS` against the active tab.
 - Choice list with per-item delete (live-removes from the page via `CHOICE_DELETED`, no reload).
 - **Add Choice** button → `OPEN_ADD_CHOICE_MODAL` on the tab.
+- **Settings:** "Show Edit CYOA button on page" checkbox (`showEditorToggle` storage key, default on) — persists the visibility of the floating page toggle and notifies the live tab via `SHOW_EDITOR_TOGGLE` (content hides/shows the button immediately; Ctrl+E still works when hidden).
+- **Editor Edits section** — lists mutations on existing (non-custom) choices from the stored `editorOverlay`: field edits (with human labels: renamed/description/points/…), moved/reordered choices, and deletions. Served by `GET_EDITS_SUMMARY` → content.js → `overlaySummarizeEdits` (`content-edits-summary.js`, shared file also loaded by the popup). **Move tracking:** `overlayApplyOp` appends `{id, from, to}` to `overlay.moves` on every `moveObject` op (an exact reverse — i.e. an undo — pops the entry; deletions purge a choice's move entries; capped at 200). Overlays saved before this existed have no move history, so those older moves won't appear until re-done. With a live CYOA page, titles resolve from `EDITOR_GET_DATA` and row titles fall back to `lastDetectedCYOA` metadata; a hint suggests opening the CYOA tab when degraded. Tests: `node .dev/test-edits-summary.js`.
 - **Export/Import** (v2 JSON: `{ version: 2, exported, customChoices, editorOverlay }`; legacy bare-array also accepted). Import merges by id, then pings `STORAGE_IMPORTED` → page reloads so the fetch interceptor applies everything cleanly.
 - **Discard All Edits** → `DISCARD_ALL_EDITS`: wipes `editorOverlay` + `customChoices`, reloads pristine.
 
@@ -115,8 +118,8 @@ Flags track application state: `overlayAppliedInFetch`, `overlayAppliedToLive`, 
 
 - Log prefix: `[Worm V17 Mod]`.
 - Files use 2-space indent, plain ES2015+, no framework in extension code itself.
-- Version string duplicated in `manifest.json` and `popup.html` (`v0.2.20` pill) — update both.
-- Popup HTML footer targets `ltouroumov.ch` / `cyoa-editor`.
+- Version string duplicated in `manifest.json` and `popup.html` (`v0.2.21` pill) — update both.
+- Popup HTML footer shows the Discard All Edits action (no target-origin text).
 - Overlay must always be `{ version: 1, ... }`; anything else is treated as null/cleared.
 - Positive value = cost, negative = gain in scores; `isGain` flag takes precedence when present.
 - `.dev/` contains local-only tooling (viewer server, structure probes, glyph/mojibake checks) — not shipped logic.
@@ -136,7 +139,8 @@ Flags track application state: `overlayAppliedInFetch`, `overlayAppliedToLive`, 
 | Key | Shape | Purpose |
 |---|---|---|
 | `customChoices` | Array of choice objects | All custom choices, survives reloads |
-| `editorOverlay` | `{ version: 1, objects: {objId: patch}, deleted: [objId], rowPatches: {rowId: patch}, rowOrder: {rowId: [objId,...]} }` | Compact record of editor mutations re-applied on every load |
+| `editorOverlay` | `{ version: 1, objects: {objId: patch}, deleted: [objId], rowPatches: {rowId: patch}, rowOrder: {rowId: [objId,...]}, moves: [{id, from, to}] }` | Compact record of editor mutations re-applied on every load (`moves` feeds the popup's Editor Edits list; capped at 200, oldest trimmed) |
 | `lastDetectedCYOA` | `{ detected, rows, pointTypes }` | Cached metadata for point-type normalization & popup status |
+| `showEditorToggle` | `boolean` (default `true`) | Whether the floating "Edit CYOA" page button (bottom-left) is shown; popup settings checkbox |
 
 Note: the legacy `settings` key (`{ enabled, showIndicator }`) is no longer read or written by any code — the background service worker that seeded it was removed. Existing values are harmless leftovers.

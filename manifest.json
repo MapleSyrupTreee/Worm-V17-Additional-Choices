@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Worm V17 CYOA - Additional Choices",
-  "version": "0.2.20",
+  "version": "0.2.21",
   "description": "Add custom choices, perks, powers, and drawbacks to the Worm V17 Interactive CYOA.",
   "icons": {
     "16": "icons/icon-16.png",
@@ -32,6 +32,7 @@
       "js": [
         "content-util.js",
         "content-overlay-store.js",
+        "content-edits-summary.js",
         "content-editor.js",
         "content-editor-dragdrop.js",
         "content-choice-modal.js",

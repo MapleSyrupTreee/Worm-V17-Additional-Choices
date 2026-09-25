@@ -87,6 +87,7 @@ function overlayApplyOp(data, prevData) {
       overlay.deleted = Array.isArray(overlay.deleted) ? overlay.deleted : [];
       overlay.rowPatches = overlay.rowPatches || {};
       overlay.rowOrder = overlay.rowOrder || {};
+      overlay.moves = Array.isArray(overlay.moves) ? overlay.moves : []; // {id, from, to} move log
       let touched = false;
 
       switch (op.type) {
@@ -110,6 +111,18 @@ function overlayApplyOp(data, prevData) {
           if (srcRowId && srcRowId !== op.toRowId) {
             const srcIds = overlayIdsOfRow(snapshot, srcRowId);
             if (srcIds) { overlay.rowOrder[srcRowId] = srcIds; touched = true; }
+          }
+          // Record the move for the popup's "Editor Edits" list. An exact
+          // reverse of the previous move (undo) pops the entry instead.
+          if (srcRowId) {
+            const lastMove = overlay.moves[overlay.moves.length - 1];
+            if (lastMove && lastMove.id === op.objId && lastMove.from === op.toRowId && lastMove.to === srcRowId) {
+              overlay.moves.pop();
+            } else {
+              overlay.moves.push({ id: op.objId, from: srcRowId, to: op.toRowId });
+              if (overlay.moves.length > 200) overlay.moves = overlay.moves.slice(-200);
+            }
+            touched = true;
           }
           break;
         }
@@ -143,6 +156,7 @@ function overlayApplyOp(data, prevData) {
           if (ids.length) {
             overlay.deleted = Array.from(new Set([...overlay.deleted, ...ids]));
             ids.forEach((id) => { delete overlay.objects[id]; });
+            overlay.moves = overlay.moves.filter(m => !ids.includes(m.id));
             Object.keys(overlay.rowOrder).forEach((rid) => {
               overlay.rowOrder[rid] = overlay.rowOrder[rid].filter(id => !ids.includes(id));
             });

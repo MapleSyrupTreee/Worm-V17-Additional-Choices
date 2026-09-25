@@ -269,10 +269,6 @@ async function openChoiceModal(opts) {
                 <input type="text" id="we-deactivatethis" class="worm-form-input" value="${esc(original.deactivateThisChoice || '')}" placeholder="id1,id2,…">
               </div>
             </div>
-            <div class="worm-check-grid worm-mt8">
-              <label class="worm-check"><input type="checkbox" id="we-actother"${original.activateOtherChoice ? ' checked' : ''}><span>When picked, activate the id above</span></label>
-              <label class="worm-check"><input type="checkbox" id="we-deactother"${original.deactivateOtherChoice ? ' checked' : ''}><span>When picked, deactivate the id above</span></label>
-            </div>
           </div>
         </div>
         <div class="worm-modal-footer">
@@ -371,12 +367,8 @@ async function openChoiceModal(opts) {
       if (minP !== String(original.numMultipleTimesMinus ?? '')) patch.numMultipleTimesMinus = minP;
     }
 
-    const actOther = overlay.querySelector('#we-actother').checked;
-    if (actOther !== !!original.activateOtherChoice) patch.activateOtherChoice = actOther;
     const actThis = overlay.querySelector('#we-activatethis').value.trim();
     if (actThis !== (original.activateThisChoice || '')) patch.activateThisChoice = actThis;
-    const deactOther = overlay.querySelector('#we-deactother').checked;
-    if (deactOther !== !!original.deactivateOtherChoice) patch.deactivateOtherChoice = deactOther;
     const deactThis = overlay.querySelector('#we-deactivatethis').value.trim();
     if (deactThis !== (original.deactivateThisChoice || '')) patch.deactivateThisChoice = deactThis;
 
@@ -618,8 +610,9 @@ async function openChoiceModal(opts) {
 
   function buildRequirementTerm(required) {
     // Mirrors the project's real choice-level {type:'id'} ConditionTerm shape
-    // (verified against project.json data): showRequired=true + beforeText
-    // "Incompatible:" for blocking terms; false + "Required:" otherwise.
+    // (verified against project.json data + the viewer bundle): showRequired
+    // controls whether the requirement line renders on the card — both
+    // "Required:" and "Incompatible:" terms display it, so always true.
     return {
       id: '',
       type: 'id',
@@ -630,7 +623,7 @@ async function openChoiceModal(opts) {
       operator: '',
       orRequired: [{ req: '' }, { req: '' }, { req: '' }, { req: '' }],
       requireds: [],
-      showRequired: !required,
+      showRequired: true,
       beforeText: required ? 'Required:' : 'Incompatible:',
       afterText: '',
     };
@@ -765,8 +758,6 @@ async function openChoiceModal(opts) {
     overlay.querySelector('#we-minpicks').value = String(original.numMultipleTimesMinus ?? 0);
     overlay.querySelector('#we-activatethis').value = original.activateThisChoice || '';
     overlay.querySelector('#we-deactivatethis').value = original.deactivateThisChoice || '';
-    overlay.querySelector('#we-actother').checked = !!original.activateOtherChoice;
-    overlay.querySelector('#we-deactother').checked = !!original.deactivateOtherChoice;
     addonsState.length = 0;
     originalAddons.forEach(a => addonsState.push(addonStateFrom(a)));
     renderAddons();
@@ -814,8 +805,6 @@ async function openChoiceModal(opts) {
       newChoice.numMultipleTimesMinus = multi ? String(parseInt(overlay.querySelector('#we-minpicks').value, 10) || 0) : '0';
       newChoice.activateThisChoice = overlay.querySelector('#we-activatethis').value.trim();
       newChoice.deactivateThisChoice = overlay.querySelector('#we-deactivatethis').value.trim();
-      newChoice.activateOtherChoice = overlay.querySelector('#we-actother').checked;
-      newChoice.deactivateOtherChoice = overlay.querySelector('#we-deactother').checked;
       newChoice.requireds = keptOthersForAdd().concat(reqState.map(en => en.term));
       closeModal();
       await editorRequest('EDITOR_OP', {

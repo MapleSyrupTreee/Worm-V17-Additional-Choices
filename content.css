@@ -372,10 +372,12 @@
    Interactive Editor ("Worm Forge")
    ========================================================================= */
 
-/* Toggle button */
+/* Toggle button — bottom LEFT so it never covers the viewer's jump-to-top
+   button (bottom right). Toggling visibility from the popup adds
+   .hidden-by-user, which force-hides it. */
 #worm-edit-toggle {
   position: fixed;
-  right: 20px;
+  left: 20px;
   bottom: 20px;
   z-index: 2147483000;
   display: inline-flex;
@@ -406,6 +408,10 @@
 #worm-edit-toggle.active {
   background: var(--wv-accent);
   color: #ffffff;
+}
+
+#worm-edit-toggle.hidden-by-user {
+  display: none !important;
 }
 
 /* Edit-mode affordances on the viewer */

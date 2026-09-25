@@ -101,15 +101,24 @@ function isEditorAllowedLocation() {
   }
 }
 
-function ensureEditorToggle() {
+async function ensureEditorToggle() {
   if (!isEditorAllowedLocation()) return;
   if (document.getElementById('worm-edit-toggle')) return;
+  // Visibility is user-controlled from the popup (chrome.storage key
+  // 'showEditorToggle', default visible). Ctrl+E keeps working even when the
+  // button is hidden.
+  let showToggle = true;
+  try {
+    const res = await chrome.storage.local.get('showEditorToggle');
+    showToggle = res.showEditorToggle !== false;
+  } catch (err) { /* storage unavailable — default to visible */ }
   const btn = document.createElement('button');
   btn.id = 'worm-edit-toggle';
   btn.className = 'worm-editor-ui';
   btn.type = 'button';
   btn.textContent = 'Edit CYOA';
   btn.title = 'Toggle the interactive editor (Ctrl+E)';
+  btn.hidden = !showToggle;
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     editorSetMode(!EDITOR_UI.active);
@@ -277,8 +286,8 @@ function editorRemoveIdBadges() {
 
 
 // Opens the Add-Choice dialog positioned directly after a reference choice.
-// Uses EDITOR_GET_OBJECT's reply (rowId + index of the reference card) so the
-// modal can submit an addObject op with an exact index.
+// Uses EDITOR_GET_OBJECT's reply (rowId + 0-based index of the reference card);
+// addObject inserts AT the given index, so pass refIndex + 1 to land AFTER it.
 async function editorInsertAfter(objId) {
   const resp = await editorRequest('EDITOR_GET_OBJECT', { objId });
   if (!resp || !resp.object || !resp.rowId) {
@@ -287,7 +296,7 @@ async function editorInsertAfter(objId) {
   }
   openChoiceModal({
     preselectedRowId: resp.rowId,
-    insertAfter: { rowId: resp.rowId, index: resp.index, title: resp.object.title || '' },
+    insertAfter: { rowId: resp.rowId, index: (typeof resp.index === 'number' ? resp.index : -1) + 1, title: resp.object.title || '' },
   });
 }
 

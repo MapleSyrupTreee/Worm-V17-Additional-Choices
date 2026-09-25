@@ -221,6 +221,35 @@ h1 {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- Settings toggle row ---- */
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.check-row input[type="checkbox"] {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.check-row-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.check-row:hover .check-row-text {
+  color: var(--text-1);
+}
+
 /* ---- Choices list ---- */
 
 .choices-list {
@@ -315,6 +344,39 @@ h1 {
 .choice-del-btn:hover {
   color: var(--bad);
   background: rgba(242, 109, 109, 0.12);
+}
+
+/* ---- Editor edits list ---- */
+
+.edits-list {
+  max-height: 148px;
+}
+
+.edit-kind {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  border-radius: 999px;
+  padding: 1px 7px;
+  color: var(--accent-bright);
+  background: var(--accent-tint);
+}
+
+.edit-kind.kind-moved {
+  color: var(--warn);
+  background: rgba(224, 163, 62, 0.14);
+}
+
+.edit-kind.kind-deleted {
+  color: var(--bad);
+  background: rgba(242, 109, 109, 0.12);
+}
+
+.edits-hint {
+  margin-top: 6px;
+  font-size: 10.5px;
+  color: var(--text-3);
 }
 
 /* ---- Footer ---- */
