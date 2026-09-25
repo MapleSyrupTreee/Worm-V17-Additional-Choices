@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Worm V17 CYOA - Additional Choices",
-  "version": "0.2.19",
+  "version": "0.2.20",
   "description": "Add custom choices, perks, powers, and drawbacks to the Worm V17 Interactive CYOA.",
   "icons": {
     "16": "icons/icon-16.png",
@@ -22,31 +22,34 @@
     "activeTab"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "https://cyoa.ltouroumov.ch/*",
+    "https://ltouroumov.github.io/*",
+    "http://localhost:8123/*"
   ],
-  "background": {
-    "service_worker": "background.js"
-  },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "matches": ["https://cyoa.ltouroumov.ch/*", "https://ltouroumov.github.io/*", "http://localhost:8123/*"],
+      "js": [
+        "content-util.js",
+        "content-overlay-store.js",
+        "content-editor.js",
+        "content-editor-dragdrop.js",
+        "content-choice-modal.js",
+        "content.js"
+      ],
       "css": ["content.css"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["<all_urls>"],
-      "js": ["page-script.js"],
-      "world": "MAIN",
-      "run_at": "document_start"
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": [
+      "matches": ["https://cyoa.ltouroumov.ch/*", "https://ltouroumov.github.io/*", "http://localhost:8123/*"],
+      "js": [
+        "page-shared.js",
+        "page-project-apply.js",
+        "page-editor-engine.js",
         "page-script.js"
       ],
-      "matches": ["<all_urls>"]
+      "world": "MAIN",
+      "run_at": "document_start"
     }
   ]
 }
