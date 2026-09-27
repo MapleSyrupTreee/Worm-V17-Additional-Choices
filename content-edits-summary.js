@@ -56,13 +56,26 @@ function overlaySummarizeEdits(overlay, customChoices, snapshot, rowTitleFallbac
     return parts;
   };
 
+  // One summary item per choice: edited + moved details merge into a single
+  // entry (kind 'changed' when both apply) instead of separate rows.
+  const perChoice = new Map(); // id -> { kind, title, details: [] }
+  const pushDetail = (id, kind, detail) => {
+    const ex = perChoice.get(id);
+    if (!ex) {
+      perChoice.set(id, { kind, title: titleOf(id), details: [detail] });
+      return;
+    }
+    if (ex.kind !== kind) ex.kind = 'changed';
+    ex.details.push(detail);
+  };
+
   // 1) Edited choices (field patches on baseline objects)
   Object.keys(objects).forEach((objId) => {
     if (customIds.has(objId)) return;
     const patch = objects[objId];
     // Skip pure ordering side effects: some flows store an id-only patch.
     if (!patch || Object.keys(patch).length === 0) return;
-    items.push({ kind: 'edited', title: titleOf(objId), detail: 'edited: ' + patchParts(patch).join(', ') });
+    pushDetail(objId, 'edited', 'edited: ' + patchParts(patch).join(', '));
   });
 
   // 2) Moved choices — from the overlay's move log (recorded per moveObject
@@ -76,13 +89,13 @@ function overlaySummarizeEdits(overlay, customChoices, snapshot, rowTitleFallbac
     if (deletedSet.has(id)) return; // moved then deleted → the deleted entry covers it
     const fromRow = rowTitleOf(m.from);
     const toRow = m.to === m.from ? fromRow : rowTitleOf(m.to);
-    items.push({
-      kind: 'moved',
-      title: titleOf(id),
-      detail: m.to === m.from
-        ? 'reordered within “' + fromRow + '”'
-        : 'moved: ' + fromRow + ' → ' + toRow,
-    });
+    pushDetail(id, 'moved', m.to === m.from
+      ? 'reordered within “' + fromRow + '”'
+      : 'moved: ' + fromRow + ' → ' + toRow);
+  });
+
+  perChoice.forEach((entry) => {
+    items.push({ kind: entry.kind, title: entry.title, detail: entry.details.join('; ') });
   });
 
   // 3) Deleted choices

@@ -208,13 +208,13 @@ async function openChoiceModal(opts) {
           </div>
 
           <div class="worm-form-group">
-            <label>Point Modifiers</label>
+            <div class="worm-sec-head">Point Modifiers</div>
             <div id="we-scores">${scoreRowsHtml}</div>
             <div class="worm-empty-hint" id="we-scores-hint"${scoreRowsHtml ? ' hidden' : ''}>No point modifiers on this choice — use “+ Add Modifier”.</div>
             <button type="button" id="we-add-score" class="worm-btn-ghost-sm worm-mt8">+ Add Modifier</button>
           </div>
           <div class="worm-form-group">
-            <label>Requirements <span class="worm-label-soft">(this choice needs/is blocked by other choices)</span></label>
+            <div class="worm-sec-head">Requirements <span class="worm-label-soft">(this choice needs/is blocked by other choices)</span></div>
             <div id="we-req-rows"></div>
             <div class="worm-act-add worm-mt8">
               <select id="we-req-kind" class="worm-form-select">
@@ -225,14 +225,9 @@ async function openChoiceModal(opts) {
               <button type="button" id="we-req-add" class="worm-btn-ghost-sm">Add</button>
             </div>
           </div>
-          <div class="worm-form-group">
-            <label>Addons <span class="worm-label-soft">(nested sub-items shown under this choice)</span></label>
-            <div id="we-addon-rows"></div>
-            <button type="button" id="we-addon-add" class="worm-btn-ghost-sm worm-mt8">+ Add Addon</button>
-          </div>
           ${!isAdd ? `
           <div class="worm-form-group">
-            <label>Section Activation <span class="worm-label-soft">(rows gated by this choice)</span></label>
+            <div class="worm-sec-head">Section Activation <span class="worm-label-soft">(rows gated by this choice)</span></div>
             <div id="we-act-rows"></div>
             <div class="worm-act-add worm-mt8">
               <select id="we-act-row" class="worm-form-select"></select>
@@ -244,7 +239,12 @@ async function openChoiceModal(opts) {
             </div>
           </div>` : ''}
           <div class="worm-form-group">
-            <label>Behavior</label>
+            <div class="worm-sec-head">Addons <span class="worm-label-soft">(nested sub-items shown under this choice)</span></div>
+            <div id="we-addon-rows"></div>
+            <button type="button" id="we-addon-add" class="worm-btn-ghost-sm worm-mt8">+ Add Addon</button>
+          </div>
+          <div class="worm-form-group">
+            <div class="worm-sec-head">Behavior</div>
             <div class="worm-check-grid">
               <label class="worm-check"><input type="checkbox" id="we-notsel"${original.isNotSelectable ? ' checked' : ''}><span>Not selectable</span></label>
               <label class="worm-check"><input type="checkbox" id="we-multi"${original.isSelectableMultiple ? ' checked' : ''}><span>Pick multiple times</span></label>

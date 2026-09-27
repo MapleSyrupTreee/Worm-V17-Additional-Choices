@@ -18,7 +18,7 @@
           <p class="tagline">Additional Choices</p>
         </div>
       </div>
-      <span class="version-pill">v0.2.21</span>
+      <span class="version-pill">v1.0.0</span>
     </header>
 
     <!-- Primary action -->
@@ -27,14 +27,6 @@
         <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>
         Add Choice
       </button>
-    </section>
-
-    <!-- Settings -->
-    <section class="pop-section">
-      <label class="check-row" for="showEditorToggle" title="Show or hide the floating Edit CYOA button on the page (bottom left)">
-        <input type="checkbox" id="showEditorToggle">
-        <span class="check-row-text">Show “Edit CYOA” button on page</span>
-      </label>
     </section>
 
     <!-- Custom choices -->
@@ -74,9 +66,60 @@
         <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h10M6 4V3h4v1m-5 0 .5 9h5L11 4"/></svg>
         Discard All Edits
       </button>
+      <label class="check-row" for="showEditorToggle" title="Show or hide the floating Edit CYOA button on the page (bottom left)">
+        <input type="checkbox" id="showEditorToggle">
+        <span class="check-row-text">“Edit CYOA” button</span>
+      </label>
     </footer>
 
+    <!-- Discard-all confirm dialog (replaces the native confirm()) -->
+    <div id="discardModal" class="modal-overlay" hidden>
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="discardTitle">
+        <h3 id="discardTitle">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2 1.5 13.5h13L8 2Zm0 4.5v3.5M8 12.2v.3"/></svg>
+          Discard all edits?
+        </h3>
+        <p>Every edit, move, addition and deletion made in the editor will be wiped and the page will reload pristine. <strong>This cannot be undone.</strong></p>
+        <div class="modal-actions">
+          <button type="button" id="discardCancelBtn" class="btn-ghost">Cancel</button>
+          <button type="button" id="discardConfirmBtn" class="btn-danger">Discard All</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notice dialog (replaces native alert()) -->
+    <div id="noticeModal" class="modal-overlay" hidden>
+      <div class="modal-dialog" role="alertdialog" aria-modal="true" aria-labelledby="noticeTitle">
+        <h3 id="noticeTitle">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path id="noticeIconPath" d=""/></svg>
+          <span id="noticeTitleText"></span>
+        </h3>
+        <p id="noticeMessage"></p>
+        <div class="modal-actions">
+          <button type="button" id="noticeOkBtn" class="btn-ghost">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Suspicious-import warning dialog -->
+    <div id="importWarnModal" class="modal-overlay" hidden>
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="importWarnTitle">
+        <h3 id="importWarnTitle" class="modal-title-warn">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2 1.5 13.5h13L8 2Zm0 4.5v3.5M8 12.2v.3"/></svg>
+          Suspicious import detected
+        </h3>
+        <p>The file contains content that needed sanitizing and could be potentially malicious:</p>
+        <ul id="importWarnList" class="modal-warn-list"></ul>
+        <p class="modal-warn-ask">Import it anyway?</p>
+        <div class="modal-actions">
+          <button type="button" id="importWarnCancelBtn" class="btn-ghost">Cancel</button>
+          <button type="button" id="importWarnConfirmBtn" class="btn-danger">Import Anyway</button>
+        </div>
+      </div>
+    </div>
+
   </div>
+  <script src="../sanitize-import.js"></script>
   <script src="../content-edits-summary.js"></script>
   <script src="popup.js"></script>
 </body>

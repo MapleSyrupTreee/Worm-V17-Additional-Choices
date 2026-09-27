@@ -312,10 +312,10 @@ function editorEnter() {
   toolbar.className = 'worm-sel-toolbar';
   toolbar.style.display = 'none';
   toolbar.innerHTML = `
+    <button type="button" data-act="drag" class="worm-drag-handle" title="Drag to move this choice — hold, move, release">⠿</button>
     <button type="button" data-act="edit" title="Edit this choice">✎ Edit</button>
     <button type="button" data-act="insert" title="Insert a new choice right after this one">＋ Insert after</button>
     <button type="button" data-act="duplicate" title="Duplicate this choice">⧉</button>
-    <button type="button" data-act="drag" class="worm-drag-handle" title="Drag to move this choice — hold, move, release">⠿</button>
     <button type="button" data-act="delete" title="Delete this choice (Del)">🗑</button>`;
   toolbar.addEventListener('click', (e) => {
     e.stopPropagation();

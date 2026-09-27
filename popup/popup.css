@@ -1,5 +1,5 @@
-/* popup.css — Worm V17 CYOA · "Obsidian Violet"
-   Neutral black/grey base; purple (#8b5cf6) is the single accent. */
+/* popup.css — Worm V17 CYOA · "Obsidian Gold"
+   Neutral black/grey base; gold (#d4a53a) is the single accent. */
 
 :root {
   --bg-0: #0b0b0f;
@@ -11,12 +11,12 @@
   --text-1: #f2f2f5;
   --text-2: #a2a2ad;
   --text-3: #6f6f7a;
-  --accent: #8b5cf6;
-  --accent-hover: #7c3aed;
-  --accent-bright: #a78bfa;
-  --accent-tint: rgba(139, 92, 246, 0.14);
+  --accent: #d4a53a;
+  --accent-hover: #b8862c;
+  --accent-bright: #eccd7a;
+  --accent-tint: rgba(212, 165, 58, 0.14);
   --good: #3ecf8e;
-  --warn: #e0a33e;
+  --warn: #e0862e;
   --bad: #f26d6d;
   --radius: 8px;
   --radius-lg: 10px;
@@ -59,7 +59,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px 13px;
-  background: radial-gradient(130% 80px at 12% -30%, rgba(139, 92, 246, 0.22), transparent 62%);
+  background: radial-gradient(130% 80px at 12% -30%, rgba(212, 165, 58, 0.22), transparent 62%);
 }
 
 .brand {
@@ -153,13 +153,13 @@ h1 {
 
 .btn-primary:hover {
   background: var(--accent-hover);
-  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.35);
+  box-shadow: 0 4px 16px rgba(212, 165, 58, 0.35);
   transform: translateY(-1px);
 }
 
 .btn-primary:active {
   transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.25);
+  box-shadow: 0 2px 8px rgba(212, 165, 58, 0.25);
 }
 
 .btn-primary svg { flex: none; }
@@ -321,6 +321,16 @@ h1 {
   text-overflow: ellipsis;
 }
 
+/* Edit details can be long ("edited: …; moved: …; …") — wrap instead of
+   truncating, so nothing is cut off. */
+.edits-list .choice-meta {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
 .choice-del-btn {
   flex: none;
   width: 22px;
@@ -368,6 +378,11 @@ h1 {
   background: rgba(224, 163, 62, 0.14);
 }
 
+.edit-kind.kind-changed {
+  color: var(--accent-bright);
+  background: var(--accent-tint);
+}
+
 .edit-kind.kind-deleted {
   color: var(--bad);
   background: rgba(242, 109, 109, 0.12);
@@ -410,6 +425,147 @@ h1 {
   border-color: rgba(242, 109, 109, 0.55);
   background: rgba(242, 109, 109, 0.08);
 }
+
+/* Footer settings toggle (moved out of its own section) */
+.pop-footer .check-row {
+  flex: none;
+}
+
+.pop-footer .check-row .check-row-text {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.pop-footer .check-row:hover .check-row-text {
+  color: var(--text-2);
+}
+
+/* ---- In-popup confirm dialog (discard all) ---- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(8, 8, 11, 0.72);
+  backdrop-filter: blur(4px);
+  animation: modalFade 0.15s ease-out;
+}
+
+@keyframes modalFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-dialog {
+  background: var(--bg-1);
+  border: 1px solid var(--stroke-strong);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 300px;
+  padding: 14px 16px;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.55);
+  animation: modalPop 0.18s var(--ease);
+}
+
+@keyframes modalPop {
+  from { transform: scale(0.94) translateY(8px); opacity: 0; }
+  to { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+.modal-dialog h3 {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  font-weight: 650;
+  letter-spacing: 0.2px;
+  color: var(--text-1);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal-dialog h3 svg {
+  flex: none;
+  color: var(--warn);
+}
+
+.modal-dialog p {
+  margin: 0 0 14px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+.modal-dialog p strong {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.btn-danger {
+  background: rgba(242, 109, 109, 0.12);
+  border: 1px solid rgba(242, 109, 109, 0.45);
+  border-radius: 7px;
+  color: var(--bad);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background var(--speed) var(--ease), border-color var(--speed) var(--ease), color var(--speed) var(--ease);
+}
+
+.btn-danger:hover {
+  background: rgba(242, 109, 109, 0.2);
+  border-color: rgba(242, 109, 109, 0.65);
+  color: #ff8f8f;
+}
+
+.btn-danger:focus-visible,
+.modal-overlay :where(button):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Warning variant (suspicious import) */
+.modal-title-warn svg {
+  color: var(--warn);
+}
+
+.modal-warn-list {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.modal-warn-list li::marker {
+  color: var(--warn);
+}
+
+.modal-warn-ask {
+  font-weight: 600;
+  color: var(--text-1) !important;
+}
+
+/* Notice dialog (native alert() replacement) */
+#noticeTitle svg {
+  flex: none;
+}
+
+#noticeTitle.tone-ok svg { color: var(--good); }
+#noticeTitle.tone-warn svg { color: var(--warn); }
+#noticeTitle.tone-error svg { color: var(--bad); }
 
 /* ---- Focus & motion ---- */
 

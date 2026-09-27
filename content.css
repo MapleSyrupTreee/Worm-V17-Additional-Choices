@@ -1,4 +1,4 @@
-/* content.css — Worm V17 in-page UI · "Obsidian Violet"
+/* content.css — Worm V17 in-page UI · "Obsidian Gold"
    Tokens are scoped to our own roots only (never :root — this stylesheet
    runs inside the host page and must not collide with its variables). */
 
@@ -16,10 +16,10 @@
   --wv-text-1: #f2f2f5;
   --wv-text-2: #a2a2ad;
   --wv-text-3: #6f6f7a;
-  --wv-accent: #8b5cf6;
-  --wv-accent-hover: #7c3aed;
-  --wv-accent-bright: #a78bfa;
-  --wv-accent-tint: rgba(139, 92, 246, 0.14);
+  --wv-accent: #d4a53a;
+  --wv-accent-hover: #b8862c;
+  --wv-accent-bright: #eccd7a;
+  --wv-accent-tint: rgba(212, 165, 58, 0.14);
   --wv-bad: #f26d6d;
   --wv-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --wv-speed: 160ms;
@@ -112,10 +112,10 @@
 }
 
 .worm-modal-body {
-  padding: 18px 20px;
+  padding: 14px 16px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   max-height: 70vh;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -152,6 +152,33 @@
   opacity: 0.9;
 }
 
+/* Section band headers inside the modal — groups mechanics fields
+   (points, requirements, activation, addons, behavior) into a scannable
+   rhythm without adding nesting. Matches the popup's section titles. */
+.worm-sec-head {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--wv-accent-bright);
+  border-top: 1px solid var(--wv-stroke);
+  padding-top: 10px;
+  margin-top: 2px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.worm-sec-head .worm-label-soft {
+  text-transform: none;
+  letter-spacing: 0.2px;
+  font-weight: 500;
+  font-size: 10.5px;
+  opacity: 1;
+}
+
+
 .worm-form-input,
 .worm-form-select,
 .worm-form-textarea {
@@ -176,7 +203,7 @@
 .worm-form-input:focus,
 .worm-form-select:focus,
 .worm-form-textarea:focus {
-  border-color: rgba(139, 92, 246, 0.65);
+  border-color: rgba(212, 165, 58, 0.65);
   box-shadow: 0 0 0 3px var(--wv-accent-tint);
 }
 
@@ -187,7 +214,7 @@
 
 .worm-form-textarea {
   resize: vertical;
-  min-height: 88px;
+  min-height: 72px;
 }
 
 /* Segmented Cost/Gain control + amount */
@@ -227,7 +254,7 @@
 .worm-seg-btn.is-active {
   background: var(--wv-accent-tint);
   color: var(--wv-accent-bright);
-  box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(212, 165, 58, 0.35);
 }
 
 .worm-mt8 { margin-top: 8px; }
@@ -274,7 +301,7 @@
 
 .worm-btn-primary:hover {
   background: var(--wv-accent-hover);
-  box-shadow: 0 3px 12px rgba(139, 92, 246, 0.4);
+  box-shadow: 0 3px 12px rgba(212, 165, 58, 0.4);
 }
 
 /* ===== Edit mode: choice-ID visibility ===== */
@@ -293,7 +320,7 @@
   letter-spacing: 0.2px;
   color: #c4b5fd;
   background: rgba(24, 16, 46, 0.85);
-  border: 1px solid rgba(139, 92, 246, 0.45);
+  border: 1px solid rgba(212, 165, 58, 0.45);
   border-radius: 4px;
   cursor: copy;
   user-select: none;
@@ -302,7 +329,7 @@
 .worm-obj-id-badge:hover {
   color: #ffffff;
   background: rgba(48, 30, 90, 0.92);
-  border-color: #8b5cf6;
+  border-color: #d4a53a;
 }
 /* ID chip in the edit-dialog header. */
 .worm-id-chip {
@@ -317,14 +344,14 @@
   font: 500 10px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   color: #c4b5fd;
   background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(139, 92, 246, 0.4);
+  border: 1px solid rgba(212, 165, 58, 0.4);
   border-radius: 5px;
   cursor: copy;
   user-select: none;
 }
 .worm-id-chip:hover {
   color: #ffffff;
-  border-color: #8b5cf6;
+  border-color: #d4a53a;
 }
 
 /* Toast */
@@ -402,7 +429,7 @@
   background: var(--wv-accent);
   color: #ffffff;
   transform: translateY(-1px);
-  box-shadow: 0 10px 30px rgba(139, 92, 246, 0.35);
+  box-shadow: 0 10px 30px rgba(212, 165, 58, 0.35);
 }
 
 #worm-edit-toggle.active {
@@ -416,7 +443,7 @@
 
 /* Edit-mode affordances on the viewer */
 body.worm-edit-mode .project-row-wrapper {
-  outline: 1px dashed rgba(139, 92, 246, 0.35);
+  outline: 1px dashed rgba(212, 165, 58, 0.35);
   outline-offset: 2px;
   border-radius: 6px;
 }
@@ -446,7 +473,7 @@ body.worm-edit-mode .project-obj .obj-controls {
   position: fixed;
   border: 2px solid var(--wv-accent);
   border-radius: 8px;
-  box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.35), 0 8px 30px rgba(139, 92, 246, 0.25);
+  box-shadow: 0 0 0 1px rgba(212, 165, 58, 0.35), 0 8px 30px rgba(212, 165, 58, 0.25);
 }
 
 .worm-sel-box::before,
@@ -531,13 +558,13 @@ body.worm-edit-mode .project-obj .obj-controls {
   width: 4px;
   border-radius: 3px;
   background: var(--wv-accent-bright);
-  box-shadow: 0 0 12px rgba(139, 92, 246, 0.9);
+  box-shadow: 0 0 12px rgba(212, 165, 58, 0.9);
   pointer-events: none;
   display: none;
   z-index: 2147483004;
 }
 .worm-drop-row-hint {
-  outline: 2px dashed rgba(139, 92, 246, 0.55);
+  outline: 2px dashed rgba(212, 165, 58, 0.55);
   outline-offset: 3px;
   border-radius: 6px;
 }
