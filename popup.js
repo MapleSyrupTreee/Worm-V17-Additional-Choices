@@ -14,12 +14,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Firefox closes the extension popup when a native file dialog opens
   // (Bugzilla 1459380/1366330), destroying the popup's JS context before the
-  // <input type="file"> change event can fire. Workaround: run the import in
-  // a standalone popup window (popup.html?import=1), which stays open during
-  // the file picker. Chrome keeps its popup open, so the in-popup picker is
-  // kept there.
+  // <input type="file"> change event can fire. Firefox also requires user
+  // activation for file pickers (Bugzilla 1678389) and activation does not
+  // carry into a newly-opened window, so the dialog cannot be auto-opened.
+  // Workaround: open a small dedicated import window (import.html) whose
+  // whole purpose is picking/dropping the JSON file; it supports drag &
+  // drop and closes itself when done. Chrome keeps its popup open, so the
+  // in-popup picker is kept there.
   const IS_FIREFOX = navigator.userAgent.includes('Firefox/');
-  const IMPORT_TAB = new URLSearchParams(location.search).get('import') === '1';
 
   // 1. Load custom choices
   const { customChoices = [] } = await chrome.storage.local.get('customChoices');
@@ -170,18 +172,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   importBtn.addEventListener('click', () => {
-    if (IS_FIREFOX && !IMPORT_TAB) {
-      // Firefox: relaunch the popup UI as a standalone window so the file
-      // picker doesn't kill the page (see note at top of file).
+    if (IS_FIREFOX) {
+      // Firefox: open the dedicated import window (see note at top of file).
       try {
-        const p = chrome.windows.create({ url: 'popup.html?import=1', type: 'popup', width: 480, height: 720 });
+        const p = chrome.windows.create({ url: 'import.html', type: 'popup', width: 440, height: 340 });
         if (p && p.then) p.catch(() => {});
       } catch (err) { /* ignore */ }
       window.close();
       return;
     }
     importFileInput.click();
-    if (IMPORT_TAB) importBtn.blur();
   });
 
   importFileInput.addEventListener('change', async (e) => {
@@ -290,9 +290,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       `Imported ${addedCount} choice(s)` + (overlayMerged ? ' and merged editor edits. The CYOA page will reload to apply them.' : '') + '.'
       + (rejectedCount > 0 ? ` (${rejectedCount} malformed entr${rejectedCount === 1 ? 'y' : 'ies'} skipped.)` : ''),
       'ok');
-
-    // Standalone import window: we're done here, close it.
-    if (IMPORT_TAB) window.close();
   }
 
   // Suspicious-import warning dialog (styled, non-native).

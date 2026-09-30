@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Import — Worm V17 Additional Choices</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: #14161b;
+      color: #e8e6e3;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      padding: 18px;
+      gap: 14px;
+      border-top: 2px solid #d4a53a;
+    }
+    h1 { font-size: 15px; font-weight: 600; color: #eccd7a; }
+    #dropZone {
+      width: 100%;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      border: 2px dashed #3a3f4b;
+      border-radius: 10px;
+      text-align: center;
+      padding: 14px;
+      transition: border-color .15s, background .15s;
+    }
+    #dropZone.dragover { border-color: #d4a53a; background: rgba(212,165,58,.08); }
+    #dropZone p { font-size: 12.5px; color: #9aa0ab; }
+    #chooseBtn {
+      background: #d4a53a;
+      color: #14161b;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 22px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #chooseBtn:hover { background: #b8862c; }
+    #status { font-size: 12.5px; min-height: 34px; text-align: center; }
+    #status.ok { color: #7ec97e; }
+    #status.warn { color: #e0862e; }
+    #status.error { color: #e06c6c; }
+    #warnBox { display: none; width: 100%; }
+    #warnBox ul { margin: 8px 0 10px 18px; font-size: 12px; color: #e0b46a; }
+    #warnBox .row { display: flex; gap: 8px; justify-content: center; }
+    #warnBox button {
+      border: 1px solid #3a3f4b;
+      background: #1d2027;
+      color: #e8e6e3;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: 12.5px;
+      cursor: pointer;
+    }
+    #warnBox #importAnywayBtn { border-color: #e0862e; color: #e0862e; }
+  </style>
+</head>
+<body>
+  <h1>Import Worm V17 data</h1>
+  <div id="dropZone">
+    <button id="chooseBtn" type="button">Choose JSON file…</button>
+    <p>…or drop your <b>worm_v17_editor_data</b> export here</p>
+    <input type="file" id="fileInput" accept=".json" hidden>
+  </div>
+  <div id="warnBox">
+    <p style="font-size:12.5px;color:#eccd7a;">Suspicious import detected:</p>
+    <ul id="warnList"></ul>
+    <div class="row">
+      <button id="importAnywayBtn" type="button">Import Anyway</button>
+      <button id="warnCancelBtn" type="button">Cancel</button>
+    </div>
+  </div>
+  <div id="status"></div>
+  <script src="sanitize-import.js"></script>
+  <script src="import.js"></script>
+</body>
+</html>
