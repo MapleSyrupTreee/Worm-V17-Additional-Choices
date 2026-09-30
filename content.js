@@ -107,7 +107,7 @@ window.addEventListener('message', async (event) => {
     editorHandleMode(event.data.data);
   } else if (event.data.type === 'EDITOR_DATA') {
     editorResolve(event.data.data && event.data.data.reqId, event.data.data);
-  } else if (event.data.type === 'EDITOR_OBJECT') {
+  } else if (event.data.type === 'EDITOR_OBJECT' || event.data.type === 'EDITOR_ROW') {
     editorResolve(event.data.data && event.data.data.reqId, event.data.data);
   } else if (event.data.type === 'EDITOR_RESULT') {
     editorResolve(event.data.data && event.data.data.reqId, event.data.data);
@@ -136,6 +136,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const snap = await editorRequest('EDITOR_GET_DATA');
       if (snap && snap.snapshot) EDITOR_UI.data = snap.snapshot;
       await openChoiceModal({});
+    })();
+    sendResponse({ status: 'ok' });
+    return true;
+  } else if (message.action === 'OPEN_ADD_ROW_MODAL') {
+    // Popup-triggered Add Row: pull a fresh editor snapshot first so the
+    // dialog has current rows/choices for placement + requirements, then
+    // open the shared row dialog.
+    (async () => {
+      const snap = await editorRequest('EDITOR_GET_DATA');
+      if (snap && snap.snapshot) EDITOR_UI.data = snap.snapshot;
+      await openRowModal({});
     })();
     sendResponse({ status: 'ok' });
     return true;

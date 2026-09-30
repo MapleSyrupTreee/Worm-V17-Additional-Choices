@@ -136,9 +136,50 @@
   }
 
   // --- Overlay sanitizer ----------------------------------------------------
+  var ROW_STRING_FIELDS = { title: MAX_TITLE_LEN, titleText: MAX_TEXT_LEN, image: MAX_IMAGE_LEN, imageLink: MAX_IMAGE_LEN, objectWidth: MAX_SHORT_LEN, rowJustify: MAX_SHORT_LEN, template: MAX_SHORT_LEN, buttonId: MAX_SHORT_LEN, buttonType: MAX_SHORT_LEN, buttonText: MAX_SHORT_LEN, resultGroupId: MAX_SHORT_LEN };
+  var ROW_FLAG_FIELDS = ['imageIsUrl', 'isInfoRow', 'isResultRow', 'isButtonRow', 'buttonRandom', 'deselectChoices', 'isEditModeOn', 'isRequirementOpen', 'isCustom'];
+  var ROW_NUMBER_FIELDS = ['allowedChoices', 'currentChoices', 'buttonRandomNumber'];
+  var ROW_LIST_FIELDS = ['requireds', 'objects'];
+
+  function sanitizeRow(raw, rowId) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) { warn('overlay-invalid-key'); return null; }
+    var out = {};
+    Object.keys(ROW_STRING_FIELDS).forEach(function (f) {
+      var orig = typeof raw[f] === 'string' ? raw[f] : '';
+      var scrubbed = scrubHtml(orig);
+      if (scrubbed !== orig) warn('html-scrubbed');
+      out[f] = clampString(scrubbed, ROW_STRING_FIELDS[f]);
+    });
+    ROW_FLAG_FIELDS.forEach(function (f) { if (raw[f] !== undefined) out[f] = Boolean(raw[f]); });
+    ROW_NUMBER_FIELDS.forEach(function (f) {
+      var v = parseInt(raw[f], 10);
+      out[f] = isFinite(v) ? v : 0;
+    });
+    ROW_LIST_FIELDS.forEach(function (f) {
+      if (Array.isArray(raw[f])) {
+        if (raw[f].length > MAX_ARRAY_LEN) warn('unsafe-data');
+        if (f === 'objects') {
+          out[f] = raw[f].slice(0, MAX_ARRAY_LEN).map(function (o) {
+            // Objects inside a created row may omit rowId — inherit the row's.
+            return sanitizeChoice(Object.assign({}, o, { rowId: (o && o.rowId) || rowId }));
+          }).filter(Boolean);
+        } else {
+          out[f] = plainData(raw[f], 0) || [];
+        }
+      }
+    });
+    Object.keys(raw).forEach(function (k) {
+      if (k === '__proto__' || k === 'constructor' || k === 'prototype') return;
+      var known = ROW_STRING_FIELDS[k] !== undefined || ROW_FLAG_FIELDS.indexOf(k) >= 0
+        || ROW_NUMBER_FIELDS.indexOf(k) >= 0 || ROW_LIST_FIELDS.indexOf(k) >= 0;
+      if (!known) warn('unknown-field');
+    });
+    return out;
+  }
+
   function sanitizeOverlay(raw) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw) || raw.version !== 1) return null;
-    var overlay = { version: 1, objects: {}, deleted: [], rowPatches: {}, rowOrder: {}, moves: [] };
+    var overlay = { version: 1, objects: {}, deleted: [], rowPatches: {}, rowOrder: {}, rows: {}, deletedRows: [], moves: [] };
     var objects = (raw.objects && typeof raw.objects === 'object') ? raw.objects : {};
     Object.keys(objects).slice(0, MAX_MAP_KEYS).forEach(function (objId) {
       if (!safeId(objId)) { warn('overlay-invalid-key'); return; }
@@ -168,6 +209,23 @@
         return false;
       });
     });
+    // Editor-created rows: {rowId: {row, afterRowId}} ('' anchor = top)
+    var overlayRows = (raw.rows && typeof raw.rows === 'object') ? raw.rows : {};
+    Object.keys(overlayRows).slice(0, MAX_MAP_KEYS).forEach(function (rowId) {
+      if (!safeId(rowId)) { warn('overlay-invalid-key'); return; }
+      var entry = plainData(overlayRows[rowId], 0);
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)
+        || !entry.row || typeof entry.row !== 'object' || Array.isArray(entry.row)) { warn('overlay-invalid-key'); return; }
+      var row = sanitizeRow(entry.row, rowId);
+      if (!row) return;
+      overlay.rows[rowId] = { row: row, afterRowId: safeId(entry.afterRowId) || '' };
+    });
+    if (Array.isArray(raw.deletedRows)) {
+      raw.deletedRows.slice(0, MAX_MAP_KEYS).forEach(function (rowId) {
+        if (safeId(rowId)) overlay.deletedRows.push(rowId);
+        else warn('overlay-invalid-key');
+      });
+    }
     if (Array.isArray(raw.moves)) {
       raw.moves.slice(0, MAX_MOVES).forEach(function (mv) {
         if (!mv || typeof mv !== 'object') { warn('overlay-invalid-key'); return; }

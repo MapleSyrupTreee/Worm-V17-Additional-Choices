@@ -173,6 +173,18 @@ function editorHandleDataChanged(data) {
     editorPurgeDeletedCustomChoices(data.deletedIds);
   } else if ((data.opType === 'duplicateObject' || data.opType === 'addObject') && data.extra && data.extra.object) {
     editorTrackNewChoice(data.extra.object);
+  } else if (data.opType === 'restoreObjects' && data.extra && Array.isArray(data.extra.customs) && data.extra.customs.length > 0) {
+    // Undoing a custom-choice delete: re-track the restored customs in
+    // storage (their delete purged them), so they survive a reload.
+    data.extra.customs.forEach(obj => editorTrackNewChoice(obj));
+  } else if (data.opType === 'deleteRow' && data.op && data.op.rowId) {
+    // Deleting a row purges the custom choices that lived in it from storage
+    // (the overlay recorder scrubs the row's overlay entries itself).
+    editorPurgeCustomChoicesInRow(data.op.rowId);
+  } else if (data.opType === 'restoreRow' && data.op && data.op.row && data.op.row.isCustom) {
+    // Undoing a custom-row delete: re-track the row's custom choices so the
+    // restored row's contents survive a reload.
+    ((data.op.row.objects) || []).forEach(o => { if (o && o.isCustom) editorTrackNewChoice(o); });
   } else if (data.opType === 'updateObject' && data.op && data.op.objId && data.op.patch) {
     editorSyncUpdatedChoice(data.op.objId, data.op.patch);
   }
@@ -315,6 +327,7 @@ function editorEnter() {
     <button type="button" data-act="drag" class="worm-drag-handle" title="Drag to move this choice — hold, move, release">⠿</button>
     <button type="button" data-act="edit" title="Edit this choice">✎ Edit</button>
     <button type="button" data-act="insert" title="Insert a new choice right after this one">＋ Insert after</button>
+    <button type="button" data-act="addrow" title="Create a new custom row">＋ Row</button>
     <button type="button" data-act="duplicate" title="Duplicate this choice">⧉</button>
     <button type="button" data-act="delete" title="Delete this choice (Del)">🗑</button>`;
   toolbar.addEventListener('click', (e) => {
@@ -323,6 +336,7 @@ function editorEnter() {
     if (!act || !EDITOR_UI.selection) return;
     if (act === 'edit') openChoiceModal({ objId: EDITOR_UI.selection.objId });
     else if (act === 'insert') editorInsertAfter(EDITOR_UI.selection.objId);
+    else if (act === 'addrow') openRowModal({});
     else if (act === 'duplicate') editorDuplicate(EDITOR_UI.selection.objId);
     else if (act === 'delete') editorDelete(EDITOR_UI.selection.objId);
     // 'drag' is handled via pointer events, not click.
@@ -415,6 +429,29 @@ function editorAttachRowBars() {
       openChoiceModal({ preselectedRowId: rowData.id });
     });
     bar.appendChild(addBtn);
+    if (rowData.isCustom) {
+      // Custom rows can be edited and deleted from their row bar.
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.textContent = '✎';
+      editBtn.title = 'Edit this custom row';
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openRowModal({ rowId: rowData.id });
+      });
+      bar.appendChild(editBtn);
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.textContent = '🗑';
+      delBtn.title = 'Delete this custom row (and its choices) — you can undo with Ctrl+Z';
+      delBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const ok = await wormConfirm('Delete this row and all choices in it? You can undo with Ctrl+Z.');
+        if (!ok) return;
+        await editorRequest('EDITOR_OP', { op: { type: 'deleteRow', rowId: rowData.id } });
+      });
+      bar.appendChild(delBtn);
+    }
     header.appendChild(bar);
     EDITOR_UI.rowBars.push(bar);
   });

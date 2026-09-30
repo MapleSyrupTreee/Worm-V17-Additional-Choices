@@ -184,7 +184,13 @@ async function openChoiceModal(opts) {
           <div class="worm-form-group">
             <label for="we-dest">Destination <span class="worm-label-soft">${insertAfter ? '(locked — inserting after “' + esc(insertAfter.title) + '”)' : ''}</span></label>
             <select id="we-dest" class="worm-form-select"${insertAfter ? ' disabled' : ''}>
-              ${allRowsList.map(r => `<option value="${esc(r.id)}"${r.id === (insertAfter ? insertAfter.rowId : preselectedRowId) ? ' selected' : ''}>${esc(r.title || r.id)} (${(r.objects || []).length} choices)</option>`).join('')}
+              ${(() => {
+                const custom = allRowsList.filter(r => r.isCustom);
+                const base = allRowsList.filter(r => !r.isCustom);
+                // Custom (user-created) rows float to the top, clearly marked.
+                const opt = (r) => `<option value="${esc(r.id)}"${r.id === (insertAfter ? insertAfter.rowId : preselectedRowId) ? ' selected' : ''}>${r.isCustom ? '⭑ ' : ''}${esc(r.title || r.id)} (${(r.objects || []).length} choices)${r.isCustom ? ' — custom' : ''}</option>`;
+                return custom.map(opt).join('') + base.map(opt).join('');
+              })()}
             </select>
             ${insertAfter ? `<input type="hidden" id="we-dest-index" value="${insertAfter.index}">` : ''}
           </div>` : ''}
@@ -842,3 +848,276 @@ async function openChoiceModal(opts) {
 }
 
 
+
+
+// ===========================================================================
+
+// Shared Row dialog — "Add Row" (blank + placement selector) and "Edit Row"
+// (custom rows only, via the row bar's ✎). Customizes every row field the
+// viewer supports EXCEPT the ones intentionally excluded by design: template,
+// grid alignment (rowJustify), deselect-on-enter (deselectChoices), button-row
+// options (isButtonRow/button*), result groups (resultGroupId) and all
+// styling — those get safe defaults instead (Viewer.md §3).
+// ===========================================================================
+function blankCustomRow() {
+  return {
+    id: 'wrow_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7),
+    title: '', titleText: '',
+    image: '', imageIsUrl: false, imageLink: '',
+    template: '1', objectWidth: '', rowJustify: '',
+    objects: [], requireds: [],
+    allowedChoices: 0, currentChoices: 0,
+    isInfoRow: false, isResultRow: false,
+    isButtonRow: false, buttonId: '', buttonType: '', buttonText: '', buttonRandom: false, buttonRandomNumber: 0,
+    deselectChoices: false, resultGroupId: '',
+    isEditModeOn: false, isRequirementOpen: false,
+    isCustom: true,
+  };
+}
+
+async function openRowModal(opts) {
+  const isAdd = !opts || !opts.rowId;
+  if (document.getElementById('worm-modal-overlay')) return;
+  let resp = null;
+  let row;
+  if (isAdd) {
+    if (!EDITOR_UI.data) { showToast('Editor data not ready — reopen the editor.'); return; }
+    row = blankCustomRow();
+  } else {
+    resp = await editorRequest('EDITOR_GET_ROW', { rowId: opts.rowId });
+    if (!resp || !resp.row) { showToast('Could not load that row.'); return; }
+    row = resp.row;
+  }
+  const rowId = isAdd ? '' : opts.rowId;
+  const original = JSON.parse(JSON.stringify(row));
+  const allRowsList = (EDITOR_UI.data && EDITOR_UI.data.rows) || [];
+  const esc = escapeHtml;
+  const isEmbeddedImage = !isAdd && typeof original.image === 'string' && original.image.startsWith('data:');
+  const imageShown = isEmbeddedImage ? '' : (original.image || '');
+
+  // Default card width options (the row's own objectWidth default for its
+  // children; '' = viewer default).
+  const widthOpts = (() => {
+    const opts = [];
+    opts.push('<option value=""' + ((original.objectWidth || '') === '' ? ' selected' : '') + '>Viewer default</option>');
+    const known = new Set(['']);
+    for (const [v, label] of EDITOR_WIDTHS) {
+      known.add(v);
+      opts.push('<option value="' + v + '"' + (v === (original.objectWidth || '') ? ' selected' : '') + '>' + esc(label) + '</option>');
+    }
+    if (original.objectWidth && !known.has(original.objectWidth)) {
+      opts.push('<option value="' + esc(original.objectWidth) + '" selected>Current (' + esc(original.objectWidth) + ')</option>');
+    }
+    return opts.join('');
+  })();
+
+  // Placement selector (Add mode): top / after any row / end.
+  const placementOpts = (() => {
+    const list = ['<option value="__top__">At the very top</option>'];
+    allRowsList.forEach(r => list.push('<option value="' + esc(r.id) + '">After “' + esc(r.title || r.id) + '”</option>'));
+    list.push('<option value="__end__" selected>At the end of the page (above the credits)</option>');
+    return list.join('');
+  })();
+
+  // Requirement terms reference choices by id (same format as the Add Choice
+  // dialog: kind select + "choice id" text input — a dropdown of all ~14.5k
+  // choices would take seconds to build). Titles resolve on demand by scan.
+  const originalRequireds = Array.isArray(original.requireds) ? original.requireds : [];
+  const reqState = originalRequireds
+    .filter(t => t && t.type === 'id')
+    .map(t => ({ term: JSON.parse(JSON.stringify(t)), required: !!t.required }));
+  function buildRowReqTerm(required) {
+    return {
+      id: '', type: 'id', required: !!required, reqId: '',
+      reqId1: '', reqId2: '', reqId3: '', reqPoints: 0, operator: '',
+      orRequired: [{ req: '' }, { req: '' }, { req: '' }, { req: '' }],
+      requireds: [], showRequired: true,
+      beforeText: required ? 'Required:' : 'Incompatible:', afterText: '',
+    };
+  }
+  function stableStringify(value) {
+    return JSON.stringify(value, (key, val) => {
+      if (val && typeof val === 'object' && !Array.isArray(val)) {
+        return Object.keys(val).sort().reduce((acc, k) => { acc[k] = val[k]; return acc; }, {});
+      }
+      return val;
+    });
+  }
+  function choiceTitleFor(id) {
+    for (const r of allRowsList) {
+      for (const o of (r.objects || [])) {
+        if (o && o.id === id) return o.title || id;
+      }
+    }
+    return id;
+  }
+const overlay = document.createElement('div');
+  overlay.id = 'worm-modal-overlay';
+  overlay.innerHTML = `
+    <div id="worm-modal-dialog">
+      <div class="worm-modal-header">
+        <h3><span class="worm-modal-glyph">▤</span> ${isAdd ? 'Add Row' : 'Edit Row'} ${!isAdd ? `<span class="worm-id-chip" id="wr-row-id" title="Row ID — click to copy">${esc(rowId)}</span>` : ''}</h3>
+        <button type="button" class="worm-modal-close-btn" id="wr-close" title="Close">&times;</button>
+      </div>
+      <form id="wr-form">
+        <div class="worm-modal-body">
+          ${isAdd ? `
+          <div class="worm-form-group">
+            <label for="wr-place">Placement</label>
+            <select id="wr-place" class="worm-form-select">${placementOpts}</select>
+          </div>` : ''}
+          <div class="worm-form-group">
+            <label for="wr-title">Row Title</label>
+            <input type="text" id="wr-title" class="worm-form-input" value="${esc(original.title || '')}" placeholder="e.g. Custom Powers">
+          </div>
+          <div class="worm-form-group">
+            <label for="wr-text">Description <span class="worm-label-soft">(shown under the heading)</span></label>
+            <textarea id="wr-text" class="worm-form-textarea" rows="3">${esc(original.titleText || '')}</textarea>
+          </div>
+          <div class="worm-form-group">
+            <label for="wr-image">Banner Image URL</label>
+            <input type="text" id="wr-image" class="worm-form-input" value="${esc(imageShown)}" placeholder="https://… (leave empty for none)">
+          </div>
+          <div class="worm-form-grid2">
+            <div class="worm-form-group">
+              <label for="wr-width">Default card width</label>
+              <select id="wr-width" class="worm-form-select">${widthOpts}</select>
+            </div>
+            <div class="worm-form-group">
+              <label for="wr-maxpicks">Max picks <span class="worm-label-soft">(0 = unlimited)</span></label>
+              <input type="number" id="wr-maxpicks" class="worm-form-input" min="0" value="${esc(String(original.allowedChoices ?? 0))}">
+            </div>
+          </div>
+          <div class="worm-form-group">
+            <div class="worm-sec-head">Behavior</div>
+            <div class="worm-check-grid">
+              <label class="worm-check"><input type="checkbox" id="wr-info"${original.isInfoRow ? ' checked' : ''}><span>Info row (heading, not selectable)</span></label>
+              <label class="worm-check"><input type="checkbox" id="wr-result"${original.isResultRow ? ' checked' : ''}><span>Result row (shows in recap)</span></label>
+            </div>
+          </div>
+          <div class="worm-form-group">
+            <div class="worm-sec-head">Row Requirements <span class="worm-label-soft">(show / hide this row based on picks)</span></div>
+            <div id="wr-req-rows"></div>
+            <div class="worm-act-add worm-mt8">
+              <select id="wr-req-kind" class="worm-form-select">
+                <option value="required">Needs a choice</option>
+                <option value="incompatible">Blocked by a choice</option>
+              </select>
+              <input type="text" id="wr-req-choice" class="worm-form-input" placeholder="choice id" autocomplete="off" spellcheck="false">
+              <button type="button" id="wr-req-add" class="worm-btn-ghost-sm">Add</button>
+            </div>
+          </div>
+        </div>
+        <div class="worm-modal-footer">
+          <span class="worm-footer-spacer"></span>
+          <button type="button" class="worm-btn-secondary" id="wr-cancel">Cancel</button>
+          <button type="submit" class="worm-btn-primary">${isAdd ? 'Add Row' : 'Save Changes'}</button>
+        </div>
+      </form>
+    </div>`;
+const idChip = overlay.querySelector('#wr-row-id');
+  if (idChip) idChip.addEventListener('click', async () => {
+    const ok = await editorCopyText(rowId);
+    showToast(ok ? 'Row ID copied: ' + rowId : 'Copy failed — ID: ' + rowId);
+  });
+
+  function renderReqRows() {
+    const wrap = overlay.querySelector('#wr-req-rows');
+    wrap.innerHTML = '';
+    if (reqState.length === 0) {
+      const hint = document.createElement('div');
+      hint.className = 'worm-empty-hint';
+      hint.textContent = 'No requirements on this row.';
+      wrap.appendChild(hint);
+      return;
+    }
+    reqState.forEach((entry, idx) => {
+      const row = document.createElement('div');
+      row.className = 'worm-act-row';
+      const name = document.createElement('span');
+      name.className = 'worm-act-name';
+      name.textContent = choiceTitleFor(entry.term.reqId);
+      const kind = document.createElement('span');
+      kind.className = 'worm-act-kind' + (entry.required ? '' : ' off');
+      kind.textContent = entry.required ? 'needs' : 'blocked by';
+      const rm = document.createElement('button');
+      rm.type = 'button';
+      rm.className = 'worm-act-remove';
+      rm.title = 'Remove this requirement';
+      rm.textContent = '×';
+      rm.addEventListener('click', () => {
+        reqState.splice(idx, 1);
+        renderReqRows();
+      });
+      row.appendChild(name);
+      row.appendChild(kind);
+      row.appendChild(rm);
+      wrap.appendChild(row);
+    });
+  }
+
+  overlay.querySelector('#wr-req-add').addEventListener('click', () => {
+    const kindSel = overlay.querySelector('#wr-req-kind');
+    const choiceSel = overlay.querySelector('#wr-req-choice');
+    const reqId = choiceSel.value.trim();
+    if (!reqId || reqState.some(e => e.term.reqId === reqId)) return;
+    const term = buildRowReqTerm(kindSel.value === 'required');
+    term.reqId = reqId;
+    reqState.push({ term, required: kindSel.value === 'required' });
+    choiceSel.value = '';
+    renderReqRows();
+  });
+
+  function closeModal() { overlay.remove(); }
+  overlay.querySelector('#wr-close').addEventListener('click', closeModal);
+  overlay.querySelector('#wr-cancel').addEventListener('click', closeModal);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+  renderReqRows();
+
+  overlay.querySelector('#wr-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const title = overlay.querySelector('#wr-title').value.trim() || 'New Row';
+    const buildPatchFields = () => {
+      const patch = {};
+      patch.title = title;
+      patch.titleText = overlay.querySelector('#wr-text').value;
+      const image = overlay.querySelector('#wr-image').value.trim();
+      if (!isEmbeddedImage) {
+        patch.image = image;
+        patch.imageIsUrl = /^https?:\/\//i.test(image);
+        patch.imageLink = /^https?:\/\//i.test(image) ? image : '';
+      }
+      patch.objectWidth = overlay.querySelector('#wr-width').value;
+      patch.allowedChoices = Math.max(0, parseInt(overlay.querySelector('#wr-maxpicks').value, 10) || 0);
+      patch.isInfoRow = overlay.querySelector('#wr-info').checked;
+      patch.isResultRow = overlay.querySelector('#wr-result').checked;
+      const keptOthers = originalRequireds.filter(t => !(t && t.type === 'id')).map(t => JSON.parse(JSON.stringify(t)));
+      patch.requireds = keptOthers.concat(reqState.map(en => en.term));
+      return patch;
+    };
+    if (isAdd) {
+      const place = overlay.querySelector('#wr-place').value;
+      const newRow = { ...blankCustomRow(), ...buildPatchFields(), title };
+      closeModal();
+      const op = place === '__top__'
+        ? { type: 'addRow', row: newRow, at: 'top' }
+        : (place === '__end__' ? { type: 'addRow', row: newRow } : { type: 'addRow', row: newRow, afterRowId: place });
+      await editorRequest('EDITOR_OP', { op });
+      showToast('Added row “' + newRow.title + '”');
+      return;
+    }
+    // ---- Edit path: diff against the original, send only what changed ----
+    const patch = buildPatchFields();
+    const changed = {};
+    Object.keys(patch).forEach((k) => {
+      const origVal = original[k] !== undefined ? original[k] : (k === 'requireds' ? [] : '');
+      if (stableStringify(patch[k]) !== stableStringify(origVal)) changed[k] = patch[k];
+    });
+    if (Object.keys(changed).length > 0) {
+      await editorRequest('EDITOR_OP', { op: { type: 'updateRow', rowId, patch: changed } });
+    }
+    closeModal();
+  });
+
+  document.body.appendChild(overlay);
+}

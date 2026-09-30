@@ -41,6 +41,7 @@ function buildEditorSnapshot() {
       isButtonRow: !!r.isButtonRow,
       isResultRow: !!r.isResultRow,
       rowJustify: r.rowJustify || '',
+      isCustom: !!r.isCustom,
       objects: (Array.isArray(r.objects) ? r.objects : []).map(o => ({
         id: o.id,
         title: o.title || '',
@@ -169,6 +170,11 @@ const EDITOR_EXEC = {
       remount: true,
       label: 'Deleted choice' + (ids.size === 1 ? '' : 's'),
       inverse: { type: 'restoreObjects', entries },
+      // Which deleted ids were user-created customs: the overlay recorder
+      // must NOT put these into overlay.deleted (they're purged from
+      // customChoices instead, and a stale overlay entry would make the
+      // popup's Editor Edits list show them as deleted original choices).
+      extra: { kind: 'delete', customIds: entries.filter(e => e.object && e.object.isCustom).map(e => e.object.id) },
     };
   },
 
@@ -192,6 +198,10 @@ const EDITOR_EXEC = {
       remount: true,
       label: 'Restored choice(s)',
       inverse: { type: 'deleteObjects', ids: entries.map(e => e.object.id) },
+      // Restored user-created customs: the content script re-tracks these in
+      // customChoices (their delete purged them from storage), so undoing a
+      // custom-choice delete survives a reload.
+      extra: { kind: 'restore', customs: cloneValue(entries.filter(e => e.object && e.object.isCustom).map(e => e.object)) },
     };
   },
 
@@ -200,13 +210,25 @@ const EDITOR_EXEC = {
     if (!row.id) row.id = newRowId();
     if (!Array.isArray(row.objects)) row.objects = [];
     const rowsCount = data.rows.length;
-    const at = op.afterRowId ? findRowIndex(data.rows, op.afterRowId) + 1 : rowsCount;
+    // Placement: 'top' → index 0; afterRowId → right after that row; else
+    // "end of page" — BEFORE the trailing Credits row (id g51j in V17,
+    // matched by title among the last rows so other projects degrade to a
+    // plain append), never the very end.
+    let at = rowsCount;
+    if (op.at === 'top') at = 0;
+    else if (op.afterRowId) at = findRowIndex(data.rows, op.afterRowId) + 1;
+    else {
+      for (let i = rowsCount - 1; i >= 0 && i >= rowsCount - 5; i--) {
+        if (/^credits/i.test((data.rows[i] && data.rows[i].title) || '')) { at = i; break; }
+      }
+    }
     return {
       rows: arrInsert(data.rows, Math.max(0, Math.min(at, rowsCount)), row),
       touched: [],
       remount: false,
       label: 'Added row “' + (row.title || row.id) + '”',
       inverse: { type: 'deleteRow', rowId: row.id },
+      extra: { kind: 'addRow', row: cloneValue(row) },
     };
   },
 
@@ -247,6 +269,14 @@ const EDITOR_EXEC = {
       remount: false,
       label: 'Deleted row “' + (row.title || op.rowId) + '”',
       inverse: { type: 'restoreRow', index: idx, row: cloneValue(row) },
+      // Object ids that lived in the deleted row: the overlay recorder uses
+      // these to scrub now-dead object patches; the content script purges any
+      // custom choices that lived here from customChoices storage.
+      extra: {
+        kind: 'deleteRow',
+        deletedObjectIds: (Array.isArray(row.objects) ? row.objects : []).map(o => o && o.id).filter(Boolean),
+        deletedCustomObjectIds: (Array.isArray(row.objects) ? row.objects : []).filter(o => o && o.isCustom).map(o => o.id),
+      },
     };
   },
 

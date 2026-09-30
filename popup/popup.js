@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const customChoicesCount = document.getElementById('customChoicesCount');
   const choicesList = document.getElementById('choicesList');
   const openInPageModalBtn = document.getElementById('openInPageModalBtn');
+  const openRowModalBtn = document.getElementById('openRowModalBtn');
   const exportBtn = document.getElementById('exportBtn');
   const importBtn = document.getElementById('importBtn');
   const importFileInput = document.getElementById('importFileInput');
@@ -16,7 +17,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   renderChoicesList(customChoices);
 
-  // 2. Open in-page modal button
+  // 2. Open in-page modal buttons (Add Row / Add Choice)
+  openRowModalBtn.addEventListener('click', async () => {
+    if (!activeTabId) {
+      showNotice('No CYOA tab', 'No active CYOA tab found. Please navigate to the Worm CYOA page.', 'warn');
+      return;
+    }
+    try {
+      await chrome.tabs.sendMessage(activeTabId, { action: 'OPEN_ADD_ROW_MODAL' });
+      window.close(); // Close popup so user interacts with page modal
+    } catch (err) {
+      await showNotice('Not connected', 'Could not open the row modal on this tab. Try reloading the CYOA page.', 'error');
+    }
+  });
+
   openInPageModalBtn.addEventListener('click', async () => {
     if (!activeTabId) {
       showNotice('No CYOA tab', 'No active CYOA tab found. Please navigate to the Worm CYOA page.', 'warn');
@@ -72,7 +86,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       editsList.innerHTML = '<div class="empty-state">No edits to existing choices.</div>';
       return;
     }
-    const kindLabel = { edited: 'edited', moved: 'moved', changed: 'edited+moved', deleted: 'deleted' };
+    const kindLabel = { edited: 'edited', moved: 'moved', changed: 'edited+moved', deleted: 'deleted', added: 'added' };
     editsList.innerHTML = items.map(it => `
       <div class="choice-item">
         <span class="edit-kind kind-${it.kind}">${kindLabel[it.kind] || it.kind}</span>

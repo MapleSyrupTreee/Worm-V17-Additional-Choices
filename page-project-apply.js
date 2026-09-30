@@ -21,14 +21,58 @@ function applyChoicesToRawProject(projectData, choices) {
   }
 }
 
+// Injects rows created in the editor (overlay.rows = {rowId: {row,
+// afterRowId}}) into a rows array. Idempotent: a row id already present is
+// skipped. Anchors chain (a row inserted after another created row), so
+// passes repeat until no more can be placed; top-anchored rows ('' = top)
+// go in first in op order; entries whose anchor vanished append at the end.
+function injectCreatedRows(rows, overlay) {
+  const created = (overlay && overlay.rows) || {};
+  const entries = Object.keys(created)
+    .map(id => ({ id, entry: created[id] }))
+    .filter(e => e.entry && e.entry.row && typeof e.entry.row === 'object' && e.id);
+  if (!entries.length || !Array.isArray(rows)) return rows;
+  let newRows = rows;
+  const present = (id) => newRows.some(r => r && r.id === id);
+  const inject = (e) => newRows = arrInsert(newRows, 0, { ...cloneValue(e.entry.row), id: e.id });
+  // 1) anchor-chained entries (afterRowId !== '')
+  let progress = true;
+  while (progress) {
+    progress = false;
+    for (const e of entries) {
+      if (!e.entry.afterRowId || present(e.id)) continue;
+      const ai = newRows.findIndex(r => r && r.id === e.entry.afterRowId);
+      if (ai < 0) continue; // anchor not placed yet — try again next pass
+      newRows = arrInsert(newRows, ai + 1, { ...cloneValue(e.entry.row), id: e.id });
+      progress = true;
+    }
+  }
+  // 2) top-anchored entries, op order preserved (insert-at-0 in reverse)
+  entries.filter(e => !e.entry.afterRowId).reverse().forEach((e) => {
+    if (!present(e.id)) inject(e);
+  });
+  // 3) orphans (anchor row no longer exists) → append at the end, op order
+  entries.forEach((e) => { if (!present(e.id)) newRows = arrInsert(newRows, newRows.length, { ...cloneValue(e.entry.row), id: e.id }); });
+  return newRows;
+}
+
 // Applies the editor overlay to a rows array PURELY (no in-place mutation):
 // returns { rows: newRows, touched: [rowId,...] }. Order of application:
-// object field patches → deletions → row field patches → row orders
-// (row orders last, so custom choices baked in beforehand get positioned).
+// created rows → object field patches → deletions → row field patches →
+// row orders (row orders last, so custom choices baked in beforehand get
+// positioned).
 function applyOverlayToRows(rows, overlay) {
   const touched = [];
   if (!overlay || !Array.isArray(rows)) return { rows, touched };
-  let newRows = rows;
+  // 0) rows created by the editor (idempotent — already-present ids skip)
+  let newRows = injectCreatedRows(rows, overlay);
+  // 0b) rows deleted in the editor (baseline rows only — created rows were
+  // removed from overlay.rows by the recorder instead)
+  const deletedRows = Array.isArray(overlay.deletedRows) ? overlay.deletedRows : [];
+  if (deletedRows.length) {
+    const deadRows = new Set(deletedRows);
+    newRows = newRows.filter(r => !(r && deadRows.has(r.id)));
+  }
   const replaceRow = (rowId, build) => {
     const idx = newRows.findIndex(r => r.id === rowId);
     if (idx < 0) return;
@@ -135,16 +179,28 @@ function applyOverlayToLiveStore(attempt = 0) {
     if (midRemount && attempt < 6) { setTimeout(() => applyOverlayToLiveStore(attempt + 1), 120); return; }
     overlayAppliedToLive = true;
     const res = applyOverlayToRows(data.rows, editorOverlay);
-    if (res.touched.length === 0) return;
+    if (res.touched.length === 0 && res.rows.length === data.rows.length) return;
+    const existed = new Set(data.rows.map(r => r && r.id));
+    // New/deleted rows change the rows array itself: a plain full replacement
+    // (new v-for entries mount fresh; removed entries unmount). Existing rows
+    // whose objects changed still go through the two-step remount below.
+    if (res.rows.length !== data.rows.length) {
+      store.store = {
+        ...store.store,
+        file: { ...store.store.file, data: { ...data, rows: res.rows } },
+      };
+    }
+    const existingTouched = res.touched.filter(rowId => existed.has(rowId));
+    if (existingTouched.length === 0) return;
     const emptiedMap = new Map();
     const restoreMap = new Map();
-    res.touched.forEach((rowId) => {
+    existingTouched.forEach((rowId) => {
       const origRow = data.rows.find(r => r.id === rowId);
       const newRow = res.rows.find(r => r.id === rowId);
       if (origRow) emptiedMap.set(rowId, { ...origRow, objects: [] });
       if (newRow) restoreMap.set(rowId, newRow);
     });
-    swapRowsWithRemount(store, emptiedMap, restoreMap, '[Worm V17 Mod] Editor overlay applied to live store: ' + res.touched.length + ' row(s)');
+    swapRowsWithRemount(store, emptiedMap, restoreMap, '[Worm V17 Mod] Editor overlay applied to live store: ' + existingTouched.length + ' row(s)');
   } catch (err) {
     console.warn('[Worm V17 Mod] Failed to apply editor overlay to live store:', err);
   }
@@ -255,7 +311,21 @@ function applyChoicesToPiniaStore(store, choices, opts = {}) {
     }
     const file = stateVal.file;
     const data = file.data;
-    const rows = data.rows;
+    let rows = data.rows;
+
+    // Custom choices may target rows created in the editor: those rows only
+    // exist via the overlay (overlay.rows). Inject them before merging so
+    // their destination resolves (mirrors the fetch-interceptor ordering).
+    if (editorOverlay && editorOverlay.rows) {
+      const missing = choices.some(raw => raw && raw.rowId && !rows.some(r => r.id === raw.rowId) && editorOverlay.rows[raw.rowId]);
+      if (missing) {
+        rows = injectCreatedRows(rows, editorOverlay);
+        store.store = {
+          ...store.store,
+          file: { ...file, data: { ...data, rows } },
+        };
+      }
+    }
 
     // Merge the normalized choices into COPIES of their target rows, keyed by rowId.
     // Untouched rows keep their original object references.

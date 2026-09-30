@@ -9,7 +9,7 @@
 function overlaySummarizeEdits(overlay, customChoices, snapshot, rowTitleFallback) {
   const ov = (overlay && overlay.version === 1)
     ? overlay
-    : { objects: {}, deleted: [], rowPatches: {}, rowOrder: {}, moves: [] };
+    : { objects: {}, deleted: [], rowPatches: {}, rowOrder: {}, rows: {}, deletedRows: [], moves: [] };
   const objects = ov.objects || {};
   const deleted = Array.isArray(ov.deleted) ? ov.deleted : [];
   const moves = Array.isArray(ov.moves) ? ov.moves : [];
@@ -102,6 +102,21 @@ function overlaySummarizeEdits(overlay, customChoices, snapshot, rowTitleFallbac
   deleted.forEach((id) => {
     if (!id || customIds.has(id)) return;
     items.push({ kind: 'deleted', title: titleOf(id), detail: 'deleted choice' });
+  });
+
+  // 4) Rows created in the editor (overlay.rows: {rowId: {row, afterRowId}})
+  const createdRows = ov.rows || {};
+  Object.keys(createdRows).forEach((rid) => {
+    const entry = createdRows[rid];
+    const row = entry && entry.row;
+    if (!row || typeof row !== 'object') return;
+    items.push({ kind: 'added', title: row.title || rid, detail: 'added row' });
+  });
+
+  // 5) Baseline rows deleted in the editor
+  (Array.isArray(ov.deletedRows) ? ov.deletedRows : []).forEach((rid) => {
+    if (!rid) return;
+    items.push({ kind: 'deleted', title: rowTitleOf(rid), detail: 'deleted row' });
   });
 
   return items;

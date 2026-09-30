@@ -164,6 +164,9 @@ h1 {
 
 .btn-primary svg { flex: none; }
 
+/* Two stacked primary buttons (Add Row above Add Choice) need a small gap */
+#openRowModalBtn { margin-bottom: 8px; }
+
 .btn-ghost {
   display: inline-flex;
   align-items: center;
@@ -386,6 +389,11 @@ h1 {
 .edit-kind.kind-deleted {
   color: var(--bad);
   background: rgba(242, 109, 109, 0.12);
+}
+
+.edit-kind.kind-added {
+  color: var(--accent);
+  background: rgba(212, 165, 58, 0.12);
 }
 
 .edits-hint {

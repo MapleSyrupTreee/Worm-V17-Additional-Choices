@@ -22,6 +22,12 @@ window.fetch = async function (...args) {
         console.log('[Worm V17 Mod] Intercepted CYOA project.json via fetch:', json.title || 'Untitled CYOA');
         detectedProject = json;
 
+        // Inject editor-created rows FIRST so custom choices can target them
+        // (mirrors the layering: rows → customs → overlay patches/orders).
+        if (editorOverlay) {
+          json.rows = injectCreatedRows(json.rows, editorOverlay);
+        }
+
         // Merge any saved custom choices into the JSON before the viewer reads it
         if (savedCustomChoices.length > 0) {
           applyChoicesToRawProject(json, savedCustomChoices);
@@ -163,6 +169,8 @@ window.addEventListener('message', (event) => {
     console.log('[Worm V17 Mod] Synced editor overlay:', editorOverlay
       ? (Object.keys(editorOverlay.objects || {}).length + ' object edit(s), ' +
          (editorOverlay.deleted || []).length + ' deletion(s), ' +
+         Object.keys(editorOverlay.rows || {}).length + ' created row(s), ' +
+         (editorOverlay.deletedRows || []).length + ' deleted row(s), ' +
          Object.keys(editorOverlay.rowPatches || {}).length + ' row edit(s), ' +
          Object.keys(editorOverlay.rowOrder || {}).length + ' ordered row(s)')
       : 'cleared');
@@ -222,6 +230,19 @@ window.addEventListener('message', (event) => {
       if (res.ok) { editorUndoStack.push(entry); postEditorResult(reqId, true, 'Redo'); }
       else { editorRedoStack.push(entry); postEditorResult(reqId, false, '', res.error); }
     }
+  } else if (command === 'EDITOR_GET_ROW') {
+    const rowId = payload && payload.rowId;
+    let row = null;
+    const ctx = getEditorCtx();
+    if (ctx && rowId) {
+      const r = ctx.rows.find(x => x && x.id === rowId);
+      if (r) row = cloneValue(r);
+    }
+    window.postMessage({
+      source: 'WORM_CYOA_PAGE_SCRIPT',
+      type: 'EDITOR_ROW',
+      data: { reqId: payload && payload.reqId, rowId, row }
+    }, '*');
   } else if (command === 'EDITOR_GET_OBJECT') {
     const objId = payload && payload.objId;
     let object = null;
