@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Worm V17 Additional Choices</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="pop">
+
+    <!-- Header -->
+    <header class="pop-header">
+      <div class="brand">
+        <img src="../icons/icon-48.png" alt="" class="logo">
+        <div class="brand-text">
+          <h1>Worm V17 CYOA <span class="status-indicator" id="statusIndicator" title="Checking CYOA tab…"></span></h1>
+          <p class="tagline">Additional Choices</p>
+        </div>
+      </div>
+      <span class="version-pill">v1.0.1</span>
+    </header>
+
+    <!-- Primary actions -->
+    <section class="pop-section">
+      <button id="openRowModalBtn" class="btn-primary" title="Opens the Add Row modal on the CYOA tab">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="2" y="2.5" width="12" height="4.5" rx="1"/><path d="M2 11h12M2 13.5h12"/></svg>
+        Add Row
+      </button>
+      <button id="openInPageModalBtn" class="btn-primary" title="Opens the Add Choice modal on the CYOA tab">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>
+        Add Choice
+      </button>
+    </section>
+
+    <!-- Custom choices -->
+    <section class="pop-section">
+      <div class="section-head">
+        <h2 class="section-title">Custom Choices <span class="count-pill" id="customChoicesCount">0</span></h2>
+        <div class="io-actions">
+          <button id="exportBtn" class="btn-ghost" title="Export custom choices AND editor edits (moves, renames, deletions) as JSON">
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v8m0 0 3-3M8 10 5 7M3 13h10"/></svg>
+            Export
+          </button>
+          <button id="importBtn" class="btn-ghost" title="Import custom choices and editor edits from JSON">
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10V2m0 0L5 5m3-3 3 3M3 13h10"/></svg>
+            Import
+          </button>
+          <input type="file" id="importFileInput" accept=".json" hidden>
+        </div>
+      </div>
+      <div id="choicesList" class="choices-list">
+        <div class="empty-state">No custom choices yet — click “Add Choice” to create one.</div>
+      </div>
+    </section>
+
+    <!-- Editor edits on existing choices -->
+    <section class="pop-section">
+      <div class="section-head">
+        <h2 class="section-title">Editor Edits <span class="count-pill" id="editsCount">0</span></h2>
+      </div>
+      <div id="editsList" class="choices-list edits-list">
+        <div class="empty-state">No edits to existing choices.</div>
+      </div>
+      <div id="editsHint" class="edits-hint" hidden>Open the CYOA tab for full choice titles and details.</div>
+    </section>
+
+    <footer class="pop-footer">
+      <button id="discardAllBtn" class="btn-ghost btn-discard" title="Wipe every editor change (edits, moves, adds, deletes) and reload the page pristine">
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h10M6 4V3h4v1m-5 0 .5 9h5L11 4"/></svg>
+        Discard All Edits
+      </button>
+      <label class="check-row" for="showEditorToggle" title="Show or hide the floating Edit CYOA button on the page (bottom left)">
+        <input type="checkbox" id="showEditorToggle">
+        <span class="check-row-text">“Edit CYOA” button</span>
+      </label>
+    </footer>
+
+    <!-- Discard-all confirm dialog (replaces the native confirm()) -->
+    <div id="discardModal" class="modal-overlay" hidden>
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="discardTitle">
+        <h3 id="discardTitle">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2 1.5 13.5h13L8 2Zm0 4.5v3.5M8 12.2v.3"/></svg>
+          Discard all edits?
+        </h3>
+        <p>Every edit, move, addition and deletion made in the editor will be wiped and the page will reload pristine. <strong>This cannot be undone.</strong></p>
+        <div class="modal-actions">
+          <button type="button" id="discardCancelBtn" class="btn-ghost">Cancel</button>
+          <button type="button" id="discardConfirmBtn" class="btn-danger">Discard All</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notice dialog (replaces native alert()) -->
+    <div id="noticeModal" class="modal-overlay" hidden>
+      <div class="modal-dialog" role="alertdialog" aria-modal="true" aria-labelledby="noticeTitle">
+        <h3 id="noticeTitle">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path id="noticeIconPath" d=""/></svg>
+          <span id="noticeTitleText"></span>
+        </h3>
+        <p id="noticeMessage"></p>
+        <div class="modal-actions">
+          <button type="button" id="noticeOkBtn" class="btn-ghost">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Suspicious-import warning dialog -->
+    <div id="importWarnModal" class="modal-overlay" hidden>
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="importWarnTitle">
+        <h3 id="importWarnTitle" class="modal-title-warn">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2 1.5 13.5h13L8 2Zm0 4.5v3.5M8 12.2v.3"/></svg>
+          Suspicious import detected
+        </h3>
+        <p>The file contains content that needed sanitizing and could be potentially malicious:</p>
+        <ul id="importWarnList" class="modal-warn-list"></ul>
+        <p class="modal-warn-ask">Import it anyway?</p>
+        <div class="modal-actions">
+          <button type="button" id="importWarnCancelBtn" class="btn-ghost">Cancel</button>
+          <button type="button" id="importWarnConfirmBtn" class="btn-danger">Import Anyway</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <script src="../sanitize-import.js"></script>
+  <script src="../content-edits-summary.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
