@@ -84,7 +84,3 @@ Everything runs **locally** — no servers, no analytics, no network requests be
 ## License
 
 Released for personal use with the Worm V17 Interactive CYOA. Worm and the CYOA belong to their respective creators.
-
----
-
-<div align="center"><em>Built for the Worm fandom — go make your build. ✨</em></div>
