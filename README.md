@@ -26,7 +26,7 @@ A Firefox extension that lets you add, edit, and reshape choices in the [Worm V1
 
 ### Notes
 
-> Requires Firefox **128 or newer** (the page-script layer uses MAIN-world content scripts, supported since 128). Temporary add-ons are removed when Firefox closes; for a permanent install, submit the zip to [addons.mozilla.org](https://addons.mozilla.org/developers/) or install it from the listing once signed.
+> Requires Firefox **128 or newer** (the page-script layer uses MAIN-world content scripts, supported since 128). Temporary add-ons are removed when Firefox closes;
 
 > Works on `cyoa.ltouroumov.ch`, `ltouroumov.github.io` mirrors, and a local dev viewer on `localhost:8123`.
 
