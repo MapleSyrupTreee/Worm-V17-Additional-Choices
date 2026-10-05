@@ -888,6 +888,11 @@ body.worm-edit-mode .row-header {
   gap: 8px;
 }
 
+.worm-addon-reqs {
+  display: grid;
+  gap: 4px;
+}
+
 /* The host page sets no [hidden] styling we can rely on, and our display:grid
    rules would override the UA default — force-hide our own toggled blocks. */
 #worm-modal-overlay [hidden] {

@@ -150,20 +150,22 @@ async function openChoiceModal(opts) {
   }
 
   // Addon state (Viewer.md §4/§10.2): V17 addons are {id, image, requireds,
-  // template, text, title} — no scores. We edit title/text + one optional
-  // {type:'id'} requirement; any other requirement terms are kept verbatim.
+  // template, text, title} — no scores. We edit title/text + any number of
+  // {type:'id'} requirements (each entry in a.reqs is one term); any other
+  // requirement terms are kept verbatim.
   const originalAddons = Array.isArray(original.addons) ? original.addons : [];
   function addonStateFrom(a) {
     const terms = Array.isArray(a.requireds) ? a.requireds : [];
-    const idTerm = terms.find(t => t && t.type === 'id');
+    const reqs = terms
+      .filter(t => t && t.type === 'id')
+      .map(t => ({ kind: t.required ? 'required' : 'incompatible', reqId: t.reqId || '' }));
     return {
       id: a.id || '',
       title: a.title || '',
       text: a.text || '',
       image: a.image || '',
       template: a.template == null ? 1 : a.template,
-      requiredKind: idTerm ? (idTerm.required ? 'required' : 'incompatible') : '',
-      reqId: idTerm ? (idTerm.reqId || '') : '',
+      reqs,
       keptTerms: terms.filter(t => !(t && t.type === 'id')),
       expanded: false,
     };
@@ -516,11 +518,59 @@ async function openChoiceModal(opts) {
   }
 
   function addonRequiredsFromState(a) {
-    const next = [];
-    if (a.requiredKind && a.reqId) {
-      next.push(addonRequirementTerm(a.requiredKind === 'required', a.reqId));
-    }
+    const next = a.reqs
+      .filter(r => r.kind && r.reqId)
+      .map(r => addonRequirementTerm(r.kind === 'required', r.reqId));
     return next.concat(a.keptTerms.map(t => JSON.parse(JSON.stringify(t))));
+  }
+
+  // Renders the requirement rows of one addon (kind select + choice-id input +
+  // remove per entry) plus the "+ Add Requirement" button.
+  function renderAddonReqs(a) {
+    const wrap = document.createElement('div');
+    wrap.className = 'worm-addon-reqs';
+    a.reqs.forEach((r, rIdx) => {
+      const reqGrid = document.createElement('div');
+      reqGrid.className = 'worm-act-add';
+      const kindSel = document.createElement('select');
+      kindSel.className = 'worm-form-select';
+      kindSel.innerHTML = `
+          <option value="required">Needs a choice</option>
+          <option value="incompatible">Blocked by a choice</option>`;
+      kindSel.value = r.kind || 'required';
+      kindSel.addEventListener('change', () => { r.kind = kindSel.value; });
+      const reqInput = document.createElement('input');
+      reqInput.type = 'text';
+      reqInput.className = 'worm-form-input';
+      reqInput.placeholder = 'choice id';
+      reqInput.autocomplete = 'off';
+      reqInput.spellcheck = false;
+      reqInput.value = r.reqId;
+      reqInput.addEventListener('input', () => { r.reqId = reqInput.value.trim(); });
+      const rm = document.createElement('button');
+      rm.type = 'button';
+      rm.className = 'worm-act-remove';
+      rm.title = 'Remove this requirement';
+      rm.textContent = '×';
+      rm.addEventListener('click', () => {
+        a.reqs.splice(rIdx, 1);
+        renderAddons();
+      });
+      reqGrid.appendChild(kindSel);
+      reqGrid.appendChild(reqInput);
+      reqGrid.appendChild(rm);
+      wrap.appendChild(reqGrid);
+    });
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'worm-btn-ghost-sm worm-mt8';
+    addBtn.textContent = '+ Add Requirement';
+    addBtn.addEventListener('click', () => {
+      a.reqs.push({ kind: 'required', reqId: '' });
+      renderAddons();
+    });
+    wrap.appendChild(addBtn);
+    return wrap;
   }
 
   function renderAddons() {
@@ -585,29 +635,13 @@ async function openChoiceModal(opts) {
         textArea.value = a.text;
         textArea.addEventListener('input', () => { a.text = textArea.value; });
         textGroup.appendChild(textArea);
-        const reqGrid = document.createElement('div');
-        reqGrid.className = 'worm-act-add';
-        const kindSel = document.createElement('select');
-        kindSel.className = 'worm-form-select';
-        kindSel.innerHTML = `
-          <option value="">No requirement</option>
-          <option value="required">Needs a choice</option>
-          <option value="incompatible">Blocked by a choice</option>`;
-        kindSel.value = a.requiredKind || '';
-        kindSel.addEventListener('change', () => { a.requiredKind = kindSel.value; });
-        const reqInput = document.createElement('input');
-        reqInput.type = 'text';
-        reqInput.className = 'worm-form-input';
-        reqInput.placeholder = 'choice id';
-        reqInput.autocomplete = 'off';
-        reqInput.spellcheck = false;
-        reqInput.value = a.reqId;
-        reqInput.addEventListener('input', () => { a.reqId = reqInput.value.trim(); });
-        reqGrid.appendChild(kindSel);
-        reqGrid.appendChild(reqInput);
+        const reqLabel = document.createElement('label');
+        reqLabel.textContent = 'Requirements';
+        const reqsWrap = renderAddonReqs(a);
         body.appendChild(titleGroup);
         body.appendChild(textGroup);
-        body.appendChild(reqGrid);
+        body.appendChild(reqLabel);
+        body.appendChild(reqsWrap);
         row.appendChild(body);
       }
       wrap.appendChild(row);
@@ -729,7 +763,7 @@ async function openChoiceModal(opts) {
   overlay.querySelector('#we-addon-add').addEventListener('click', () => {
     addonsState.push({
       id: newAddonId(), title: '', text: '', image: '', template: 1,
-      requiredKind: '', reqId: '', keptTerms: [], expanded: true,
+      reqs: [], keptTerms: [], expanded: true,
     });
     renderAddons();
   });
