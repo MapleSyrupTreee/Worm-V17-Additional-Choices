@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Worm V17 CYOA - Additional Choices",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "browser_specific_settings": {
     "gecko": {
       "id": "worm-v17-additional-choices@example.com",
